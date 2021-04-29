@@ -18,4 +18,5 @@ jobs:
                   python -m pip install flake8 black isort
             - name: Make quality
               run: |
+                  cd backend
                   make quality
