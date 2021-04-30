@@ -7,12 +7,12 @@ from app.api.dependencies.database import get_repository
 from app.db.repositories.experiments import ExperimentsRepository
 from app.db.repositories.users import UsersRepository
 from app.db.repositories.whitelist import WhitelistRepository
-from app.models.experiment import ExperimentBase, ExperimentCreate
+from app.models.experiment import ExperimentBase, ExperimentCreate, ExperimentUpdate
 from app.models.experiment_full import (
     DeletedExperimentFullPublic,
     ExperimentFullCreate,
     ExperimentFullPublic,
-    ExperimentFullUpdatePartial,
+    ExperimentFullUpdate,
 )
 from app.models.whitelist import WhitelistItemCreate
 from app.services.authentication import MoonlandingUser, authenticate
@@ -107,10 +107,10 @@ async def get_experiment_by_id(
     return experiment_full
 
 
-@router.put("/{id}/", response_model=ExperimentFullPublic, name="experiments:add-new-collaborators-to-experiment")
+@router.put("/{id}/", response_model=ExperimentFullPublic, name="experiments:update-experiment-by-id")
 async def update_experiment_by_id(
     id: int = Path(..., ge=1, title="The ID of the experiment to update."),
-    experiment_update: ExperimentFullUpdatePartial = Body(..., embed=True),
+    experiment_full_update: ExperimentFullUpdate = Body(..., embed=True),
     experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
     users_repo: UsersRepository = Depends(get_repository(UsersRepository)),
     whitelist_repo: WhitelistRepository = Depends(get_repository(WhitelistRepository)),
@@ -122,14 +122,33 @@ async def update_experiment_by_id(
     if experiment.owner != user.username:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="You aren't the owner of this experiment")
 
-    if experiment_update.collaborators:
-        for collaborator in experiment_update.collaborators:
+    if experiment_full_update.added_collaborators:
+        for collaborator in experiment_full_update.added_collaborators:
             new_user = await users_repo.get_user_by_username(username=collaborator.username)
             if new_user is None:
                 new_user = await users_repo.register_new_user(new_user=collaborator)
 
             new_item = WhitelistItemCreate(experiment_id=id, user_id=new_user.id)
             _ = await whitelist_repo.register_new_whitelist_item(new_item=new_item)
+
+    if experiment_full_update.removed_collaborators:
+        for collaborator in experiment_full_update.removed_collaborators:
+            to_remove_user = await users_repo.get_user_by_username(username=collaborator.username)
+            if to_remove_user:
+                to_remove_item = await whitelist_repo.get_item_by_ids(experiment_id=id, user_id=to_remove_user.id)
+                all_user_occurences_in_whitelist = await whitelist_repo.list_all_user_id_items(
+                    user_id=to_remove_user.id
+                )
+
+                if to_remove_item:
+                    _ = await whitelist_repo.delete_item_by_id(id=to_remove_item.id)
+                if to_remove_item is not None and to_remove_item.id in [
+                    item.id for item in all_user_occurences_in_whitelist
+                ]:
+                    _ = await users_repo.delete_user_by_id(id=to_remove_user.id)
+
+    experiment_update = ExperimentUpdate(**experiment_full_update.dict(exclude_unset=True))
+    experiment = await experiments_repo.update_experiment_by_id(id_exp=id, experiment_update=experiment_update)
 
     updated_experiment = await retrieve_full_experiment(
         experiment_id=id, whitelist_repo=whitelist_repo, users_repo=users_repo, experiment=experiment

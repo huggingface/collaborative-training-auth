@@ -103,7 +103,13 @@ async def test_experiment_1_created_by_user_1(
 
     new_experiment = ExperimentFullCreate(
         name="fake experiment 1 created by user 1 name",
-        collaborators=[UserCreate(username="user1"), UserCreate(username="user2"), UserCreate(username="user3")],
+        collaborators=[
+            UserCreate(username="user1"),
+            UserCreate(username="user2"),
+            UserCreate(username="user3"),
+            UserCreate(username="user10"),
+            UserCreate(username="user11"),
+        ],
     )
     new_exp = await create_new_experiment(
         new_experiment=new_experiment,
@@ -155,7 +161,7 @@ async def test_experiment_created_by_user_2(
 
     new_experiment = ExperimentFullCreate(
         name="fake experiment 1 created by user 2 name",
-        collaborators=[UserCreate(username="user2"), UserCreate(username="user4"), UserCreate(username="user6")],
+        collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user6")],
     )
     return await create_new_experiment(
         new_experiment=new_experiment,

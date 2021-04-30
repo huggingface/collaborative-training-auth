@@ -1,3 +1,5 @@
+from typing import Optional
+
 from app.models.core import CoreModel, DateTimeModelMixin, IDModelMixin
 
 

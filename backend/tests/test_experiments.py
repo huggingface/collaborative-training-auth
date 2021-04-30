@@ -1,3 +1,4 @@
+from ipaddress import IPv4Address, IPv6Address
 from typing import List
 
 import pytest
@@ -5,7 +6,7 @@ from fastapi import FastAPI, status
 from httpx import AsyncClient
 
 from app.models.experiment import ExperimentCreate
-from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic
+from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
 from app.models.user import UserCreate
 
 
@@ -158,10 +159,33 @@ class TestGetExperiment:
 
 class TestUpdateExperiment:
     @pytest.mark.parametrize(
-        "attrs_to_change, values",
+        "attrs_to_change, update_keys, values",
         (
-            (["collaborators"], [[UserCreate(username="user7").dict(), UserCreate(username="user8").dict()]]),
-            (["collaborators"], [[UserCreate(username="user9").dict()]]),
+            (["collaborators"], ["added_collaborators"], [[UserCreate(username="user9").dict()]]),
+            (["collaborators"], ["removed_collaborators"], [[UserCreate(username="user99").dict()]]),
+            (["coordinator_ip"], ["coordinator_ip"], ["192.0.2.0"]),
+            (["coordinator_ip"], ["coordinator_ip"], ["684D:1111:222:3333:4444:5555:6:77"]),
+            (["coordinator_port"], ["coordinator_port"], [400]),
+            (
+                [
+                    "coordinator_ip",
+                    "coordinator_port",
+                    "collaborators",
+                    "collaborators",
+                ],
+                [
+                    "coordinator_ip",
+                    "coordinator_port",
+                    "added_collaborators",
+                    "removed_collaborators",
+                ],
+                [
+                    "00.00.00.00",
+                    80,
+                    [UserCreate(username="user7").dict(), UserCreate(username="user8").dict()],
+                    [UserCreate(username="user10").dict(), UserCreate(username="user11").dict()],
+                ],
+            ),
         ),
     )
     async def test_update_experiment_with_valid_input(
@@ -170,33 +194,63 @@ class TestUpdateExperiment:
         client_wt_auth_user_1: AsyncClient,
         test_experiment_1_created_by_user_1: ExperimentFullPublic,
         attrs_to_change: List[str],
+        update_keys: List[str],
         values: List[str],
     ) -> None:
-        experiment_update = {"experiment_update": {attrs_to_change[i]: values[i] for i in range(len(attrs_to_change))}}
+        _ = ExperimentFullUpdate(**{update_keys[i]: values[i] for i in range(len(attrs_to_change))})
+        experiment_full_update = {
+            "experiment_full_update": {update_keys[i]: values[i] for i in range(len(attrs_to_change))}
+        }
+        # raise ValueError(experiment_full_update)
         res = await client_wt_auth_user_1.put(
             app_wt_auth_user_1.url_path_for(
-                "experiments:add-new-collaborators-to-experiment", id=test_experiment_1_created_by_user_1.id
+                "experiments:update-experiment-by-id", id=test_experiment_1_created_by_user_1.id
             ),
-            json=experiment_update,
+            json=experiment_full_update,
         )
         assert res.status_code == status.HTTP_200_OK
         updated_experiment = ExperimentFullPublic(**res.json())
         assert updated_experiment.id == test_experiment_1_created_by_user_1.id  # make sure it's the same experiment
 
         # make sure that any attribute we updated has changed to the correct value
-        for i in range(len(attrs_to_change)):
-            assert getattr(updated_experiment, attrs_to_change[i]) != getattr(
-                test_experiment_1_created_by_user_1, attrs_to_change[i]
-            )
-            for collaborator_to_add in values[i]:
-                assert collaborator_to_add in [
-                    UserCreate(**collaborator.dict()).dict()
-                    for collaborator in getattr(updated_experiment, attrs_to_change[i])
-                ]
+        for attr_to_change, update_key, value in zip(attrs_to_change, update_keys, values):
+            # assert getattr(updated_experiment, attr_to_change) != getattr(
+            #     test_experiment_1_created_by_user_1, attr_to_change
+            # )
+            if update_key == "added_collaborators":
+                for collaborator_to_add in value:
+                    assert collaborator_to_add in [
+                        UserCreate(**collaborator.dict()).dict()
+                        for collaborator in getattr(updated_experiment, attr_to_change)
+                    ]
+            elif update_key == "removed_collaborators":
+                for collaborator_to_remove in value:
+                    assert collaborator_to_remove not in [
+                        UserCreate(**collaborator.dict()).dict()
+                        for collaborator in getattr(updated_experiment, attr_to_change)
+                    ]
+            else:
+                final_value = getattr(updated_experiment, attr_to_change)
+                if isinstance(final_value, IPv4Address):
+                    assert final_value == IPv4Address(value)
+                elif isinstance(final_value, IPv6Address):
+                    assert final_value == IPv6Address(value)
+                else:
+                    assert final_value == value
+
         # make sure that no other attributes' values have changed
         for attr, value in updated_experiment.dict().items():
-            if attr not in attrs_to_change:
-                assert getattr(test_experiment_1_created_by_user_1, attr) == value
+            if attr not in attrs_to_change and attr != "updated_at":
+                final_value = getattr(test_experiment_1_created_by_user_1, attr)
+
+                if isinstance(final_value, IPv4Address):
+                    assert final_value == IPv4Address(value)
+                elif isinstance(final_value, IPv6Address):
+                    assert final_value == IPv6Address(value)
+                else:
+                    assert final_value == value
+            if attr == "updated_at":
+                assert getattr(test_experiment_1_created_by_user_1, attr) != value
 
     @pytest.mark.parametrize(
         "id, payload, status_code",
@@ -217,7 +271,7 @@ class TestUpdateExperiment:
     ) -> None:
         experiment_update = {"experiment_update": payload}
         res = await client_wt_auth_user_1.put(
-            app_wt_auth_user_1.url_path_for("experiments:add-new-collaborators-to-experiment", id=id),
+            app_wt_auth_user_1.url_path_for("experiments:update-experiment-by-id", id=id),
             json=experiment_update,
         )
         assert res.status_code == status_code
@@ -280,3 +334,23 @@ class TestDeleteExperiment:
             app_wt_auth_user_1.url_path_for("experiments:delete-experiment-by-id", id=id)
         )
         assert res.status_code == status_code
+
+
+class TestJoinExperiment:
+    async def test_can_join_experiment_successfully(
+        self,
+        app_wt_auth_user_1: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        test_experiment_created_by_user_2: ExperimentFullPublic,
+    ) -> None:
+        # # delete the experiment
+        # res = await client_wt_auth_user_1.delete(
+        #     app_wt_auth_user_1.url_path_for(
+        #         "experiments:join-experiment-by-id", id=test_experiment_created_by_user_2.id
+        #     )
+        # )
+        # assert res.status_code == status.HTTP_200_OK
+        pass
+
+    async def test_cant_join_experiment_successfully(self):
+        pass
