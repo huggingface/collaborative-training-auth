@@ -1,7 +1,5 @@
 from typing import List, Optional
 
-from pydantic import IPvAnyAddress
-
 from app.models.core import CoreModel, DateTimeModelMixin, IDModelMixin
 from app.models.experiment import ExperimentBase, ExperimentCreate, ExperimentUpdate
 from app.models.user import UserCreate, UserInDB
