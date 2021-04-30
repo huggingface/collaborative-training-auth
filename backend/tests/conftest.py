@@ -9,11 +9,11 @@ from databases import Database
 from fastapi import FastAPI
 from httpx import AsyncClient
 
-from app.api.routes.experiments import create_new_experiment
+from app.api.routes.experiments import create_new_experiment, update_experiment_by_id
 from app.db.repositories.experiments import ExperimentsRepository
 from app.db.repositories.users import UsersRepository
 from app.db.repositories.whitelist import WhitelistRepository
-from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic
+from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
 from app.models.user import UserCreate
 from app.services.authentication import MoonlandingUser
 
@@ -163,10 +163,19 @@ async def test_experiment_created_by_user_2(
         name="fake experiment 1 created by user 2 name",
         collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user6")],
     )
-    return await create_new_experiment(
+    experiment = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
         user=moonlanding_user_2,
     )
+    exp = await update_experiment_by_id(
+        id=experiment.id,
+        experiment_full_update=ExperimentFullUpdate(coordinator_ip="192.0.2.0", coordinator_port=80),
+        experiments_repo=experiments_repo,
+        users_repo=users_repo,
+        whitelist_repo=whitelist_repo,
+        user=moonlanding_user_2,
+    )
+    return exp

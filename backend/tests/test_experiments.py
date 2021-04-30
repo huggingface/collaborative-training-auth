@@ -7,6 +7,7 @@ from httpx import AsyncClient
 
 from app.models.experiment import ExperimentCreate
 from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
+from app.models.experiment_pass import ExperimentPassPublic
 from app.models.user import UserCreate
 
 
@@ -342,14 +343,15 @@ class TestJoinExperiment:
         client_wt_auth_user_1: AsyncClient,
         test_experiment_created_by_user_2: ExperimentFullPublic,
     ) -> None:
-        # # delete the experiment
-        # res = await client_wt_auth_user_1.delete(
-        #     app_wt_auth_user_1.url_path_for(
-        #         "experiments:join-experiment-by-id", id=test_experiment_created_by_user_2.id
-        #     )
-        # )
-        # assert res.status_code == status.HTTP_200_OK
-        pass
+        res = await client_wt_auth_user_1.put(
+            app_wt_auth_user_1.url_path_for(
+                "experiments:join-experiment-by-id", id=test_experiment_created_by_user_2.id
+            )
+        )
+        assert res.status_code == status.HTTP_200_OK, res.content
+        exp_pass = ExperimentPassPublic(**res.json())
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_created_by_user_2.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_created_by_user_2.coordinator_port
 
     async def test_cant_join_experiment_successfully(self):
         pass
