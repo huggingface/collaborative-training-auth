@@ -258,7 +258,6 @@ class TestUpdateExperiment:
             (-1, {"name": "test"}, 422),
             (0, {"name": "test2"}, 422),
             (500, {"name": "test3"}, 404),
-            (1, None, 422),
         ),
     )
     async def test_update_experiment_with_invalid_input_throws_error(
