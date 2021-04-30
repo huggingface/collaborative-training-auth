@@ -1,0 +1,16 @@
+name: API tests
+
+on: [push]
+
+jobs:
+    App:
+        name: Test api
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v2
+        - name: Build the stack and test it
+            run: |
+                  cd backend
+                  mv .env.template .env
+                  docker-compose up -d --build
+                  docker exec -it redapi_server_1 pytest -v
