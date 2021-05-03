@@ -14,8 +14,8 @@ from app.models.experiment_full import (
     ExperimentFullPublic,
     ExperimentFullUpdate,
 )
-from app.models.whitelist import WhitelistItemCreate
 from app.models.experiment_pass import ExperimentPassPublic
+from app.models.whitelist import WhitelistItemCreate
 from app.services.authentication import MoonlandingUser, authenticate
 
 
@@ -108,7 +108,7 @@ async def get_experiment_by_id(
     return experiment_full
 
 
-@router.put("/join/{id}/", response_model=ExperimentFullPublic, name="experiments:update-experiment-by-id")
+@router.put("/{id}/", response_model=ExperimentFullPublic, name="experiments:update-experiment-by-id")
 async def update_experiment_by_id(
     id: int = Path(..., ge=1, title="The ID of the experiment to update."),
     experiment_full_update: ExperimentFullUpdate = Body(..., embed=True),
@@ -194,9 +194,9 @@ async def delete_experiment_by_id(
     return deleted_exp
 
 
-@router.put("/{id}/", response_model=ExperimentPassPublic, name="experiments:join-experiment-by-id")
+@router.put("/join/{id}/", response_model=ExperimentPassPublic, name="experiments:join-experiment-by-id")
 async def join_experiment_by_id(
-    id: int = Path(..., ge=1, title="The ID of the experiment to delete."),
+    id: int = Path(..., ge=1, title="The ID of the experiment the user wants to join."),
     experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
     whitelist_repo: WhitelistRepository = Depends(get_repository(WhitelistRepository)),
     users_repo: UsersRepository = Depends(get_repository(UsersRepository)),
@@ -214,7 +214,7 @@ async def join_experiment_by_id(
     if not user.username.lower() in [collaborator.username.lower() for collaborator in experiment.collaborators]:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
-            detail=f"Access to the experiment denied.",
+            detail="Access to the experiment denied.",
         )
 
     exp_pass = ExperimentPassPublic(**experiment.dict())

@@ -258,6 +258,7 @@ class TestUpdateExperiment:
         (
             (-1, {"name": "test"}, 422),
             (0, {"name": "test2"}, 422),
+            (500, {}, 404),
             (500, {"name": "test3"}, 404),
         ),
     )
@@ -269,10 +270,10 @@ class TestUpdateExperiment:
         payload: dict,
         status_code: int,
     ) -> None:
-        experiment_update = {"experiment_update": payload}
+        experiment_full_update = {"experiment_full_update": payload}
         res = await client_wt_auth_user_1.put(
             app_wt_auth_user_1.url_path_for("experiments:update-experiment-by-id", id=id),
-            json=experiment_update,
+            json=experiment_full_update,
         )
         assert res.status_code == status_code
 

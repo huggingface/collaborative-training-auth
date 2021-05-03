@@ -72,9 +72,6 @@ class ExperimentsRepository(BaseRepository):
             return None
         experiment_update_params = experiment.copy(update=experiment_update.dict(exclude_unset=True))
         values = {**experiment_update_params.dict(exclude={"collaborators", "created_at", "updated_at"})}
-        # raise ValueError(
-        #     f"experiment: {experiment}\nexperiment_update.dict(exclude_unset=True): {experiment_update.dict(exclude_unset=True)}\nexperiment_update_params: {experiment_update_params}\nvalues: {values}"
-        # )
         if "coordinator_ip" in values.keys() and (
             isinstance(values["coordinator_ip"], IPv4Address) or isinstance(values["coordinator_ip"], IPv6Address)
         ):
