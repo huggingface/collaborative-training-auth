@@ -9,18 +9,19 @@ from app.models.experiment import ExperimentCreate, ExperimentInDB, ExperimentUp
 from app.services.authentication import MoonlandingUser
 
 
+COLUMNS = "id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at"
 CREATE_EXPERIMENT_QUERY = """
-    INSERT INTO experiments (name, owner)
-    VALUES (:name, :owner)
-    RETURNING id, name, owner, coordinator_ip, coordinator_port, created_at, updated_at;
+    INSERT INTO experiments (name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key)
+    VALUES (:name, :owner, :coordinator_ip, :coordinator_port, :auth_server_public_key, :auth_server_private_key)
+    RETURNING id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at;
 """
 GET_EXPERIMENT_BY_ID_QUERY = """
-    SELECT id, name, owner, coordinator_ip, coordinator_port, created_at, updated_at
+    SELECT id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
     FROM experiments
     WHERE id = :id;
 """
 LIST_ALL_USER_EXPERIMENTS_QUERY = """
-    SELECT id, name, owner, coordinator_ip, coordinator_port, created_at, updated_at
+    SELECT id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
     FROM experiments
     WHERE owner = :owner;
 """
@@ -31,7 +32,7 @@ UPDATE_EXPERIMENT_BY_ID_QUERY = """
         coordinator_port = :coordinator_port,
         owner            = :owner
     WHERE id = :id
-    RETURNING id, name, owner, coordinator_ip, coordinator_port, created_at, updated_at;
+    RETURNING id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at;
 """
 DELETE_EXPERIMENT_BY_ID_QUERY = """
     DELETE FROM experiments
@@ -49,6 +50,12 @@ class ExperimentsRepository(BaseRepository):
         self, *, new_experiment: ExperimentCreate, requesting_user: MoonlandingUser
     ) -> ExperimentInDB:
         new_experiment_table = {**new_experiment.dict(), "owner": requesting_user.username}
+        if "coordinator_ip" in new_experiment_table.keys() and (
+            isinstance(new_experiment_table["coordinator_ip"], IPv4Address)
+            or isinstance(new_experiment_table["coordinator_ip"], IPv6Address)
+        ):
+            new_experiment_table["coordinator_ip"] = str(new_experiment_table["coordinator_ip"])
+
         experiment = await self.db.fetch_one(query=CREATE_EXPERIMENT_QUERY, values=new_experiment_table)
         return ExperimentInDB(**experiment)
 
@@ -66,12 +73,21 @@ class ExperimentsRepository(BaseRepository):
         return [ExperimentInDB(**exp) for exp in experiment_records]
 
     async def update_experiment_by_id(self, *, id_exp: int, experiment_update: ExperimentUpdate) -> ExperimentInDB:
-
         experiment = await self.get_experiment_by_id(id=id_exp)
         if not experiment:
             return None
         experiment_update_params = experiment.copy(update=experiment_update.dict(exclude_unset=True))
-        values = {**experiment_update_params.dict(exclude={"collaborators", "created_at", "updated_at"})}
+        values = {
+            **experiment_update_params.dict(
+                exclude={
+                    "collaborators",
+                    "auth_server_public_key",
+                    "auth_server_private_key",
+                    "created_at",
+                    "updated_at",
+                }
+            )
+        }
         if "coordinator_ip" in values.keys() and (
             isinstance(values["coordinator_ip"], IPv4Address) or isinstance(values["coordinator_ip"], IPv6Address)
         ):

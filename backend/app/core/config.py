@@ -8,7 +8,7 @@ PROJECT_NAME = "whitelist"
 VERSION = "1.0.0"
 API_PREFIX = "/api"
 
-SECRET_KEY = config("SECRET_KEY", cast=Secret, default="CHANGEME")
+SECRET_KEY = config("SECRET_KEY", cast=Secret)
 
 POSTGRES_USER = config("POSTGRES_USER", cast=str)
 POSTGRES_PASSWORD = config("POSTGRES_PASSWORD", cast=Secret)
@@ -20,3 +20,5 @@ DATABASE_URL = config(
     cast=DatabaseURL,
     default=f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_SERVER}:{POSTGRES_PORT}/{POSTGRES_DB}",
 )
+
+EXPIRATION_MINUTES = 60 * 24 * 21

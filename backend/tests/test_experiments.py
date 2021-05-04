@@ -1,3 +1,5 @@
+import base64
+import datetime
 from ipaddress import IPv4Address, IPv6Address
 from typing import List
 
@@ -5,9 +7,10 @@ import pytest
 from fastapi import FastAPI, status
 from httpx import AsyncClient
 
+from app.db.repositories import crypto
 from app.models.experiment import ExperimentCreate
 from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
-from app.models.experiment_pass import ExperimentPassPublic
+from app.models.experiment_pass import ExperimentPassInputBase, ExperimentPassPublic
 from app.models.user import UserCreate
 
 
@@ -116,11 +119,11 @@ class TestGetExperiment:
         self,
         app_wt_auth_user_1: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_created_by_user_2: ExperimentFullPublic,
+        test_experiment_1_created_by_user_2: ExperimentFullPublic,
     ) -> None:
         res = await client_wt_auth_user_1.get(
             app_wt_auth_user_1.url_path_for(
-                "experiments:get-experiment-by-id", id=test_experiment_created_by_user_2.id
+                "experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id
             )
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
@@ -163,7 +166,7 @@ class TestUpdateExperiment:
         "attrs_to_change, update_keys, values",
         (
             (["collaborators"], ["added_collaborators"], [[UserCreate(username="user9").dict()]]),
-            (["collaborators"], ["removed_collaborators"], [[UserCreate(username="user99").dict()]]),
+            (["collaborators"], ["removed_collaborators"], [[UserCreate(username="user3").dict()]]),
             (["coordinator_ip"], ["coordinator_ip"], ["192.0.2.0"]),
             (["coordinator_ip"], ["coordinator_ip"], ["684D:1111:222:3333:4444:5555:6:77"]),
             (["coordinator_port"], ["coordinator_port"], [400]),
@@ -202,7 +205,6 @@ class TestUpdateExperiment:
         experiment_full_update = {
             "experiment_full_update": {update_keys[i]: values[i] for i in range(len(attrs_to_change))}
         }
-        # raise ValueError(experiment_full_update)
         res = await client_wt_auth_user_1.put(
             app_wt_auth_user_1.url_path_for(
                 "experiments:update-experiment-by-id", id=test_experiment_1_created_by_user_1.id
@@ -215,9 +217,10 @@ class TestUpdateExperiment:
 
         # make sure that any attribute we updated has changed to the correct value
         for attr_to_change, update_key, value in zip(attrs_to_change, update_keys, values):
-            # assert getattr(updated_experiment, attr_to_change) != getattr(
-            #     test_experiment_1_created_by_user_1, attr_to_change
-            # )
+            # Beware, this can raise an error if someone ask to removed user not whitelisted (and it isn't an error)
+            assert getattr(updated_experiment, attr_to_change) != getattr(
+                test_experiment_1_created_by_user_1, attr_to_change
+            )
             if update_key == "added_collaborators":
                 for collaborator_to_add in value:
                     assert collaborator_to_add in [
@@ -304,12 +307,12 @@ class TestDeleteExperiment:
         self,
         app_wt_auth_user_1: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_created_by_user_2: ExperimentFullPublic,
+        test_experiment_1_created_by_user_2: ExperimentFullPublic,
     ) -> None:
         # delete the experiment
         res = await client_wt_auth_user_1.delete(
             app_wt_auth_user_1.url_path_for(
-                "experiments:delete-experiment-by-id", id=test_experiment_created_by_user_2.id
+                "experiments:delete-experiment-by-id", id=test_experiment_1_created_by_user_2.id
             )
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
@@ -325,6 +328,7 @@ class TestDeleteExperiment:
     )
     async def test_can_delete_experiment_unsuccessfully(
         self,
+        moonlanding_user_1,
         app_wt_auth_user_1: FastAPI,
         client_wt_auth_user_1: AsyncClient,
         test_experiment_1_created_by_user_1: ExperimentFullPublic,
@@ -340,19 +344,64 @@ class TestDeleteExperiment:
 class TestJoinExperiment:
     async def test_can_join_experiment_successfully(
         self,
+        moonlanding_user_1,
         app_wt_auth_user_1: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_created_by_user_2: ExperimentFullPublic,
+        test_experiment_1_created_by_user_2: ExperimentFullPublic,
+        test_experiment_pass_input_by_user_1: ExperimentPassInputBase,
     ) -> None:
+        values = test_experiment_pass_input_by_user_1.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
         res = await client_wt_auth_user_1.put(
             app_wt_auth_user_1.url_path_for(
-                "experiments:join-experiment-by-id", id=test_experiment_created_by_user_2.id
-            )
+                "experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id
+            ),
+            json={"experiment_pass_input": values},
         )
         assert res.status_code == status.HTTP_200_OK, res.content
-        exp_pass = ExperimentPassPublic(**res.json())
-        assert getattr(exp_pass, "coordinator_ip") == test_experiment_created_by_user_2.coordinator_ip
-        assert getattr(exp_pass, "coordinator_port") == test_experiment_created_by_user_2.coordinator_port
 
-    async def test_cant_join_experiment_successfully(self):
-        pass
+        exp_pass = ExperimentPassPublic(**res.json())
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_2.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_2.coordinator_port
+
+        hivemind_access_token = getattr(exp_pass, "hivemind_access_token")
+        assert (
+            getattr(hivemind_access_token, "peer_public_key") == test_experiment_pass_input_by_user_1.peer_public_key
+        )
+
+        signature = base64.b64decode(getattr(hivemind_access_token, "signature"))
+
+        auth_server_public_key = getattr(exp_pass, "auth_server_public_key")
+        auth_server_public_key = crypto.load_public_key(auth_server_public_key)
+
+        verif = auth_server_public_key.verify(
+            signature,
+            f"{hivemind_access_token.username} {hivemind_access_token.peer_public_key} {hivemind_access_token.expiration_time}".encode(),
+            crypto.PADDING,
+            crypto.HASH_ALGORITHM,
+        )
+        assert verif is None  # verify() returns None iff the signature is correct
+        assert hivemind_access_token.expiration_time > datetime.datetime.utcnow()
+        assert hivemind_access_token.username == moonlanding_user_1.username.lower()
+
+    async def test_cant_join_experiment_successfully_user_not_whitelisted(
+        self,
+        moonlanding_user_1,
+        app_wt_auth_user_1: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        test_experiment_2_created_by_user_2: ExperimentFullPublic,
+        test_experiment_pass_input_by_user_1: ExperimentPassInputBase,
+    ):
+        values = test_experiment_pass_input_by_user_1.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
+        res = await client_wt_auth_user_1.put(
+            app_wt_auth_user_1.url_path_for(
+                "experiments:join-experiment-by-id", id=test_experiment_2_created_by_user_2.id
+            ),
+            json={"experiment_pass_input": values},
+        )
+        assert res.status_code == status.HTTP_401_UNAUTHORIZED, res.content

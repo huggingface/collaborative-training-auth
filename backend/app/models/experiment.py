@@ -24,8 +24,10 @@ class ExperimentBase(CoreModel):
         return port
 
 
-class ExperimentCreate(CoreModel):
+class ExperimentCreate(ExperimentBase):
     name: str
+    auth_server_public_key: Optional[bytes]
+    auth_server_private_key: Optional[bytes]
 
 
 class ExperimentUpdate(ExperimentBase):
@@ -35,6 +37,8 @@ class ExperimentUpdate(ExperimentBase):
 class ExperimentInDB(IDModelMixin, DateTimeModelMixin, ExperimentBase):
     name: str
     owner: str
+    auth_server_public_key: Optional[bytes]
+    auth_server_private_key: Optional[bytes]
 
 
 class ExperimentPublic(IDModelMixin, DateTimeModelMixin, ExperimentBase):

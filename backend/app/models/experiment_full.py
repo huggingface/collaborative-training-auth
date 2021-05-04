@@ -1,7 +1,7 @@
 from typing import List, Optional
 
-from app.models.core import CoreModel, DateTimeModelMixin, IDModelMixin
-from app.models.experiment import ExperimentBase, ExperimentCreate, ExperimentUpdate
+from app.models.core import CoreModel, IDModelMixin
+from app.models.experiment import ExperimentBase, ExperimentCreate, ExperimentInDB, ExperimentPublic, ExperimentUpdate
 from app.models.user import UserCreate, UserInDB
 
 
@@ -22,13 +22,13 @@ class ExperimentFullUpdate(ExperimentUpdate):
     removed_collaborators: Optional[List[UserCreate]]
 
 
-class ExperimentFullInDB(IDModelMixin, DateTimeModelMixin, ExperimentBase):
+class ExperimentFullInDB(ExperimentInDB):
     name: str
     owner: str
     collaborators: Optional[List[UserInDB]]
 
 
-class ExperimentFullPublic(IDModelMixin, DateTimeModelMixin, ExperimentBase):
+class ExperimentFullPublic(ExperimentPublic):
     name: Optional[str]
     owner: Optional[str]
     collaborators: Optional[List[UserInDB]]

@@ -5,6 +5,8 @@ import alembic
 import pytest
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from databases import Database
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -14,6 +16,7 @@ from app.db.repositories.experiments import ExperimentsRepository
 from app.db.repositories.users import UsersRepository
 from app.db.repositories.whitelist import WhitelistRepository
 from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
+from app.models.experiment_pass import ExperimentPassInputBase
 from app.models.user import UserCreate
 from app.services.authentication import MoonlandingUser
 
@@ -142,6 +145,15 @@ async def test_experiment_2_created_by_user_1(
     )
 
 
+@pytest.fixture
+async def test_experiment_pass_input_by_user_1() -> ExperimentPassInputBase:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    serialized_public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
+    )
+    return ExperimentPassInputBase(peer_public_key=serialized_public_key)
+
+
 # Fixtures for authenticated user 2
 
 # Create a user for testing
@@ -152,7 +164,7 @@ def moonlanding_user_2() -> MoonlandingUser:
 
 
 @pytest.fixture
-async def test_experiment_created_by_user_2(
+async def test_experiment_1_created_by_user_2(
     db_wt_auth_user_1: Database, moonlanding_user_2: MoonlandingUser
 ) -> ExperimentFullPublic:
     experiments_repo = ExperimentsRepository(db_wt_auth_user_1)
@@ -162,6 +174,36 @@ async def test_experiment_created_by_user_2(
     new_experiment = ExperimentFullCreate(
         name="fake experiment 1 created by user 2 name",
         collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user6")],
+    )
+    experiment = await create_new_experiment(
+        new_experiment=new_experiment,
+        experiments_repo=experiments_repo,
+        users_repo=users_repo,
+        whitelist_repo=whitelist_repo,
+        user=moonlanding_user_2,
+    )
+    exp = await update_experiment_by_id(
+        id=experiment.id,
+        experiment_full_update=ExperimentFullUpdate(coordinator_ip="192.0.2.0", coordinator_port=80),
+        experiments_repo=experiments_repo,
+        users_repo=users_repo,
+        whitelist_repo=whitelist_repo,
+        user=moonlanding_user_2,
+    )
+    return exp
+
+
+@pytest.fixture
+async def test_experiment_2_created_by_user_2(
+    db_wt_auth_user_1: Database, moonlanding_user_2: MoonlandingUser
+) -> ExperimentFullPublic:
+    experiments_repo = ExperimentsRepository(db_wt_auth_user_1)
+    users_repo = UsersRepository(db_wt_auth_user_1)
+    whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
+
+    new_experiment = ExperimentFullCreate(
+        name="fake experiment 1 created by user 2 name",
+        collaborators=[UserCreate(username="user4"), UserCreate(username="user6")],
     )
     experiment = await create_new_experiment(
         new_experiment=new_experiment,

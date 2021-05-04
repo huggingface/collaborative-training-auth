@@ -49,30 +49,6 @@ async def authenticate(credentials: Optional[HTTPAuthorizationCredentials] = Dep
     username = user_identity["name"]
     email = user_identity["email"]
 
-    # if user_identity["type"] == "user":
-    #     is_org = False
-    #     orgs = [org["name"] for org in user_identity["orgs"]]
-    #     is_hf = "huggingface" in orgs
-    #     is_autonlp = "autonlp" in orgs
-    #     if not user_identity["emailVerified"]:
-    #         raise HTTPException(
-    #             status_code=HTTP_403_FORBIDDEN, detail="You need a verified email address to use AutoNLP"
-    #         )
-    # else:
-    #     is_org = True
-    #     orgs = []
-    #     is_hf = username == "huggingface"
-    #     is_autonlp = username == "autonlp"
-    #     if not is_hf and (email is None or user_identity["plan"] == "NO_PLAN"):
-    #         raise HTTPException(
-    #             status_code=HTTP_403_FORBIDDEN,
-    #             detail="You must suscribe to an organization plan to use AutoNLP as an organization: https://huggingface.co/pricing",
-    #         )
-
-    # # Prevent acces to staging to not HF users / orgs
-    # if not (os.getenv("PRODUCTION") or is_hf or is_autonlp):
-    #     raise HTTPException(status_code=HTTP_403_FORBIDDEN)
-
     return MoonlandingUser(username=username, email=email)
 
 
@@ -83,12 +59,3 @@ def moonlanding_auth(token: str) -> dict:
     auth_repsonse = requests.get(HF_API + "/whoami-v2", headers={"Authorization": f"Bearer {token}"}, timeout=3)
     auth_repsonse.raise_for_status()
     return auth_repsonse.json()
-
-
-# def moonlanding_auth(token: str) -> dict:
-#     """Validate token with Moon Landing
-#     TODO: cache requests to avoid flooding Moon Landing
-#     """
-#     # auth_repsonse = requests.get(HF_API + "/whoami-v2", headers={"Authorization": f"Bearer {token}"}, timeout=3)
-#     # auth_repsonse.raise_for_status()
-#     return MoonlandingUser(username="User1", email="user1@test.co")

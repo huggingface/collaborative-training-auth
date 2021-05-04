@@ -6,6 +6,7 @@ email-validator==1.1.1
 
 #auth
 requests
+cryptography==3.4.6
 
 # db
 databases[postgresql]==0.4.2
