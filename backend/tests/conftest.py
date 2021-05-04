@@ -15,8 +15,8 @@ from app.api.routes.experiments import create_new_experiment, update_experiment_
 from app.db.repositories.experiments import ExperimentsRepository
 from app.db.repositories.users import UsersRepository
 from app.db.repositories.whitelist import WhitelistRepository
-from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
-from app.models.experiment_pass import ExperimentPassInputBase
+from app.models.experiment_full import ExperimentFullCreatePublic, ExperimentFullPublic, ExperimentFullUpdate
+from app.models.experiment_join import ExperimentJoinInput
 from app.models.user import UserCreate
 from app.services.authentication import MoonlandingUser
 
@@ -104,7 +104,7 @@ async def test_experiment_1_created_by_user_1(
     users_repo = UsersRepository(db_wt_auth_user_1)
     whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
 
-    new_experiment = ExperimentFullCreate(
+    new_experiment = ExperimentFullCreatePublic(
         name="fake experiment 1 created by user 1 name",
         collaborators=[
             UserCreate(username="user1"),
@@ -132,7 +132,7 @@ async def test_experiment_2_created_by_user_1(
     users_repo = UsersRepository(db_wt_auth_user_1)
     whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
 
-    new_experiment = ExperimentFullCreate(
+    new_experiment = ExperimentFullCreatePublic(
         name="fake experiment 2 created by user 1 name",
         collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user5")],
     )
@@ -146,12 +146,12 @@ async def test_experiment_2_created_by_user_1(
 
 
 @pytest.fixture
-async def test_experiment_pass_input_by_user_1() -> ExperimentPassInputBase:
+async def test_experiment_join_input_by_user_1() -> ExperimentJoinInput:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     serialized_public_key = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
     )
-    return ExperimentPassInputBase(peer_public_key=serialized_public_key)
+    return ExperimentJoinInput(peer_public_key=serialized_public_key)
 
 
 # Fixtures for authenticated user 2
@@ -171,7 +171,7 @@ async def test_experiment_1_created_by_user_2(
     users_repo = UsersRepository(db_wt_auth_user_1)
     whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
 
-    new_experiment = ExperimentFullCreate(
+    new_experiment = ExperimentFullCreatePublic(
         name="fake experiment 1 created by user 2 name",
         collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user6")],
     )
@@ -201,7 +201,7 @@ async def test_experiment_2_created_by_user_2(
     users_repo = UsersRepository(db_wt_auth_user_1)
     whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
 
-    new_experiment = ExperimentFullCreate(
+    new_experiment = ExperimentFullCreatePublic(
         name="fake experiment 1 created by user 2 name",
         collaborators=[UserCreate(username="user4"), UserCreate(username="user6")],
     )

@@ -24,6 +24,10 @@ class ExperimentBase(CoreModel):
         return port
 
 
+class ExperimentCreatePublic(ExperimentBase):
+    name: str
+
+
 class ExperimentCreate(ExperimentBase):
     name: str
     auth_server_public_key: Optional[bytes]

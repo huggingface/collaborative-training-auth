@@ -9,8 +9,8 @@ from httpx import AsyncClient
 
 from app.db.repositories import crypto
 from app.models.experiment import ExperimentCreate
-from app.models.experiment_full import ExperimentFullCreate, ExperimentFullPublic, ExperimentFullUpdate
-from app.models.experiment_pass import ExperimentPassInputBase, ExperimentPassPublic
+from app.models.experiment_full import ExperimentFullCreatePublic, ExperimentFullPublic, ExperimentFullUpdate
+from app.models.experiment_join import ExperimentJoinInput, ExperimentJoinOutput
 from app.models.user import UserCreate
 
 
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def new_experiment():
-    return ExperimentFullCreate(name="test experiment", collaborators=[UserCreate(username="peter")])
+    return ExperimentFullCreatePublic(name="test experiment", collaborators=[UserCreate(username="peter")])
 
 
 class TestExperimentsRoutes:
@@ -43,10 +43,10 @@ class TestCreateExperiment:
     @pytest.mark.parametrize(
         "new_experiment",
         (
-            (ExperimentFullCreate(name="test 2")),
-            (ExperimentFullCreate(name="test 3", collaborators=[UserCreate(username="peter")])),
+            (ExperimentFullCreatePublic(name="test 2")),
+            (ExperimentFullCreatePublic(name="test 3", collaborators=[UserCreate(username="peter")])),
             (
-                ExperimentFullCreate(
+                ExperimentFullCreatePublic(
                     name="test 4", collaborators=[UserCreate(username="peter"), UserCreate(username="jane")]
                 )
             ),
@@ -348,9 +348,9 @@ class TestJoinExperiment:
         app_wt_auth_user_1: FastAPI,
         client_wt_auth_user_1: AsyncClient,
         test_experiment_1_created_by_user_2: ExperimentFullPublic,
-        test_experiment_pass_input_by_user_1: ExperimentPassInputBase,
+        test_experiment_join_input_by_user_1: ExperimentJoinInput,
     ) -> None:
-        values = test_experiment_pass_input_by_user_1.dict()
+        values = test_experiment_join_input_by_user_1.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
@@ -358,33 +358,31 @@ class TestJoinExperiment:
             app_wt_auth_user_1.url_path_for(
                 "experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id
             ),
-            json={"experiment_pass_input": values},
+            json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_200_OK, res.content
 
-        exp_pass = ExperimentPassPublic(**res.json())
+        exp_pass = ExperimentJoinOutput(**res.json())
         assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_2.coordinator_ip
         assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_2.coordinator_port
 
-        hivemind_access_token = getattr(exp_pass, "hivemind_access_token")
-        assert (
-            getattr(hivemind_access_token, "peer_public_key") == test_experiment_pass_input_by_user_1.peer_public_key
-        )
+        hivemind_access = getattr(exp_pass, "hivemind_access")
+        assert getattr(hivemind_access, "peer_public_key") == test_experiment_join_input_by_user_1.peer_public_key
 
-        signature = base64.b64decode(getattr(hivemind_access_token, "signature"))
+        signature = base64.b64decode(getattr(hivemind_access, "signature"))
 
         auth_server_public_key = getattr(exp_pass, "auth_server_public_key")
         auth_server_public_key = crypto.load_public_key(auth_server_public_key)
 
         verif = auth_server_public_key.verify(
             signature,
-            f"{hivemind_access_token.username} {hivemind_access_token.peer_public_key} {hivemind_access_token.expiration_time}".encode(),
+            f"{hivemind_access.username} {hivemind_access.peer_public_key} {hivemind_access.expiration_time}".encode(),
             crypto.PADDING,
             crypto.HASH_ALGORITHM,
         )
         assert verif is None  # verify() returns None iff the signature is correct
-        assert hivemind_access_token.expiration_time > datetime.datetime.utcnow()
-        assert hivemind_access_token.username == moonlanding_user_1.username.lower()
+        assert hivemind_access.expiration_time > datetime.datetime.utcnow()
+        assert hivemind_access.username == moonlanding_user_1.username.lower()
 
     async def test_cant_join_experiment_successfully_user_not_whitelisted(
         self,
@@ -392,9 +390,9 @@ class TestJoinExperiment:
         app_wt_auth_user_1: FastAPI,
         client_wt_auth_user_1: AsyncClient,
         test_experiment_2_created_by_user_2: ExperimentFullPublic,
-        test_experiment_pass_input_by_user_1: ExperimentPassInputBase,
+        test_experiment_join_input_by_user_1: ExperimentJoinInput,
     ):
-        values = test_experiment_pass_input_by_user_1.dict()
+        values = test_experiment_join_input_by_user_1.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
@@ -402,6 +400,6 @@ class TestJoinExperiment:
             app_wt_auth_user_1.url_path_for(
                 "experiments:join-experiment-by-id", id=test_experiment_2_created_by_user_2.id
             ),
-            json={"experiment_pass_input": values},
+            json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED, res.content

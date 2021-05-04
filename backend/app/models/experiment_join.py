@@ -6,7 +6,14 @@ from pydantic import IPvAnyAddress, validator
 from app.models.core import CoreModel
 
 
-class ExperimentPassInputBase(CoreModel):
+class HivemindAccess(CoreModel):
+    username: str
+    peer_public_key: bytes
+    expiration_time: datetime.datetime
+    signature: bytes
+
+
+class ExperimentJoinInput(CoreModel):
     """
     All common characteristics of our Experiment resource
     """
@@ -14,21 +21,14 @@ class ExperimentPassInputBase(CoreModel):
     peer_public_key: Optional[bytes]  # bytes
 
 
-class HivemindAccessToken(CoreModel):
-    username: str
-    peer_public_key: bytes
-    expiration_time: datetime.datetime
-    signature: bytes
-
-
-class ExperimentPassBase(CoreModel):
+class ExperimentJoinOutput(CoreModel):
     """
     All common characteristics of our Experiment resource
     """
 
     coordinator_ip: Optional[IPvAnyAddress]
     coordinator_port: Optional[int]
-    hivemind_access_token: HivemindAccessToken
+    hivemind_access: HivemindAccess
     auth_server_public_key: bytes
 
     @validator("coordinator_port")
@@ -39,7 +39,3 @@ class ExperimentPassBase(CoreModel):
         if int(port) > 2 ** 16:
             raise ValueError("port overflow")
         return port
-
-
-class ExperimentPassPublic(ExperimentPassBase):
-    pass

@@ -1,7 +1,14 @@
 from typing import List, Optional
 
 from app.models.core import CoreModel, IDModelMixin
-from app.models.experiment import ExperimentBase, ExperimentCreate, ExperimentInDB, ExperimentPublic, ExperimentUpdate
+from app.models.experiment import (
+    ExperimentBase,
+    ExperimentCreate,
+    ExperimentCreatePublic,
+    ExperimentInDB,
+    ExperimentPublic,
+    ExperimentUpdate,
+)
 from app.models.user import UserCreate, UserInDB
 
 
@@ -11,6 +18,10 @@ class ExperimentFullBase(ExperimentBase):
     """
 
     pass
+
+
+class ExperimentFullCreatePublic(ExperimentCreatePublic):
+    collaborators: Optional[List[UserCreate]]
 
 
 class ExperimentFullCreate(ExperimentCreate):
