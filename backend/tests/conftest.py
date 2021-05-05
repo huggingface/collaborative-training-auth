@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 
 from app.api.routes.experiments import create_new_experiment, update_experiment_by_id
+from app.db.repositories.collaborators import CollaboratorsRepository
 from app.db.repositories.experiments import ExperimentsRepository
 from app.db.repositories.users import UsersRepository
 from app.db.repositories.whitelist import WhitelistRepository
@@ -58,7 +59,7 @@ async def client(app: FastAPI) -> AsyncClient:
             yield client
 
 
-# Fixtures for authenticated user 1
+# Fixtures for authenticated User1
 
 # Create a user for testing
 @pytest.fixture
@@ -67,51 +68,36 @@ def moonlanding_user_1() -> MoonlandingUser:
     return moonlanding_user_1
 
 
-# Create a new application for testing
-@pytest.fixture
-def app_wt_auth_user_1(apply_migrations: None, moonlanding_user_1: MoonlandingUser) -> FastAPI:
-    from app.api.server import get_application
-    from app.services.authentication import authenticate
-
-    app = get_application()
-
-    app.dependency_overrides[authenticate] = lambda: moonlanding_user_1
-
-    return app
-
-
-# Grab a reference to our database when needed
-@pytest.fixture
-def db_wt_auth_user_1(app_wt_auth_user_1: FastAPI) -> Database:
-    return app_wt_auth_user_1.state._db
-
-
 # Make requests in our tests
 @pytest.fixture
-async def client_wt_auth_user_1(app_wt_auth_user_1: FastAPI) -> AsyncClient:
-    async with LifespanManager(app_wt_auth_user_1):
+async def client_wt_auth_user_1(app: FastAPI, moonlanding_user_1: MoonlandingUser) -> AsyncClient:
+    from app.services.authentication import authenticate
+
+    app.dependency_overrides[authenticate] = lambda: moonlanding_user_1
+    async with LifespanManager(app):
         async with AsyncClient(
-            app=app_wt_auth_user_1, base_url="http://testserver", headers={"Content-Type": "application/json"}
+            app=app, base_url="http://testserver", headers={"Content-Type": "application/json"}
         ) as client:
             yield client
 
 
 @pytest.fixture
 async def test_experiment_1_created_by_user_1(
-    db_wt_auth_user_1: Database, moonlanding_user_1: MoonlandingUser
+    db: Database, moonlanding_user_1: MoonlandingUser
 ) -> ExperimentFullPublic:
-    experiments_repo = ExperimentsRepository(db_wt_auth_user_1)
-    users_repo = UsersRepository(db_wt_auth_user_1)
-    whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
+    experiments_repo = ExperimentsRepository(db)
+    users_repo = UsersRepository(db)
+    whitelist_repo = WhitelistRepository(db)
+    collaborators_repo = CollaboratorsRepository(db)
 
     new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 1 created by user 1 name",
+        name="fake experiment 1 created by User1 name",
         collaborators=[
-            UserCreate(username="user1"),
-            UserCreate(username="user2"),
-            UserCreate(username="user3"),
-            UserCreate(username="user10"),
-            UserCreate(username="user11"),
+            UserCreate(username="User1"),
+            UserCreate(username="User2"),
+            UserCreate(username="User3"),
+            UserCreate(username="User10"),
+            UserCreate(username="User11"),
         ],
     )
     new_exp = await create_new_experiment(
@@ -119,6 +105,7 @@ async def test_experiment_1_created_by_user_1(
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
+        collaborators_repo=collaborators_repo,
         user=moonlanding_user_1,
     )
     return new_exp
@@ -126,27 +113,29 @@ async def test_experiment_1_created_by_user_1(
 
 @pytest.fixture
 async def test_experiment_2_created_by_user_1(
-    db_wt_auth_user_1: Database, moonlanding_user_1: MoonlandingUser
+    db: Database, moonlanding_user_1: MoonlandingUser
 ) -> ExperimentFullPublic:
-    experiments_repo = ExperimentsRepository(db_wt_auth_user_1)
-    users_repo = UsersRepository(db_wt_auth_user_1)
-    whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
+    experiments_repo = ExperimentsRepository(db)
+    users_repo = UsersRepository(db)
+    whitelist_repo = WhitelistRepository(db)
+    collaborators_repo = CollaboratorsRepository(db)
 
     new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 2 created by user 1 name",
-        collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user5")],
+        name="fake experiment 2 created by User1 name",
+        collaborators=[UserCreate(username="User1"), UserCreate(username="User4"), UserCreate(username="User5")],
     )
     return await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
+        collaborators_repo=collaborators_repo,
         user=moonlanding_user_1,
     )
 
 
 @pytest.fixture
-async def test_experiment_join_input_by_user_1() -> ExperimentJoinInput:
+async def test_experiment_join_input_1_by_user_1() -> ExperimentJoinInput:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     serialized_public_key = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
@@ -154,7 +143,16 @@ async def test_experiment_join_input_by_user_1() -> ExperimentJoinInput:
     return ExperimentJoinInput(peer_public_key=serialized_public_key)
 
 
-# Fixtures for authenticated user 2
+@pytest.fixture
+async def test_experiment_join_input_2_by_user_1() -> ExperimentJoinInput:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    serialized_public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
+    )
+    return ExperimentJoinInput(peer_public_key=serialized_public_key)
+
+
+# Fixtures for authenticated User2
 
 # Create a user for testing
 @pytest.fixture
@@ -164,22 +162,36 @@ def moonlanding_user_2() -> MoonlandingUser:
 
 
 @pytest.fixture
+async def client_wt_auth_user_2(app: FastAPI, moonlanding_user_2: MoonlandingUser) -> AsyncClient:
+    from app.services.authentication import authenticate
+
+    app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
+    async with LifespanManager(app):
+        async with AsyncClient(
+            app=app, base_url="http://testserver", headers={"Content-Type": "application/json"}
+        ) as client:
+            yield client
+
+
+@pytest.fixture
 async def test_experiment_1_created_by_user_2(
-    db_wt_auth_user_1: Database, moonlanding_user_2: MoonlandingUser
+    db: Database, moonlanding_user_2: MoonlandingUser
 ) -> ExperimentFullPublic:
-    experiments_repo = ExperimentsRepository(db_wt_auth_user_1)
-    users_repo = UsersRepository(db_wt_auth_user_1)
-    whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
+    experiments_repo = ExperimentsRepository(db)
+    users_repo = UsersRepository(db)
+    whitelist_repo = WhitelistRepository(db)
+    collaborators_repo = CollaboratorsRepository(db)
 
     new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 1 created by user 2 name",
-        collaborators=[UserCreate(username="user1"), UserCreate(username="user4"), UserCreate(username="user6")],
+        name="fake experiment 1 created by User2 name",
+        collaborators=[UserCreate(username="User1"), UserCreate(username="User4"), UserCreate(username="User6")],
     )
     experiment = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
+        collaborators_repo=collaborators_repo,
         user=moonlanding_user_2,
     )
     exp = await update_experiment_by_id(
@@ -188,6 +200,7 @@ async def test_experiment_1_created_by_user_2(
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
+        collaborators_repo=collaborators_repo,
         user=moonlanding_user_2,
     )
     return exp
@@ -195,21 +208,23 @@ async def test_experiment_1_created_by_user_2(
 
 @pytest.fixture
 async def test_experiment_2_created_by_user_2(
-    db_wt_auth_user_1: Database, moonlanding_user_2: MoonlandingUser
+    db: Database, moonlanding_user_2: MoonlandingUser
 ) -> ExperimentFullPublic:
-    experiments_repo = ExperimentsRepository(db_wt_auth_user_1)
-    users_repo = UsersRepository(db_wt_auth_user_1)
-    whitelist_repo = WhitelistRepository(db_wt_auth_user_1)
+    experiments_repo = ExperimentsRepository(db)
+    users_repo = UsersRepository(db)
+    whitelist_repo = WhitelistRepository(db)
+    collaborators_repo = CollaboratorsRepository(db)
 
     new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 1 created by user 2 name",
-        collaborators=[UserCreate(username="user4"), UserCreate(username="user6")],
+        name="fake experiment 1 created by User2 name",
+        collaborators=[UserCreate(username="user1"), UserCreate(username="User4"), UserCreate(username="User6")],
     )
     experiment = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
+        collaborators_repo=collaborators_repo,
         user=moonlanding_user_2,
     )
     exp = await update_experiment_by_id(
@@ -218,6 +233,7 @@ async def test_experiment_2_created_by_user_2(
         experiments_repo=experiments_repo,
         users_repo=users_repo,
         whitelist_repo=whitelist_repo,
+        collaborators_repo=collaborators_repo,
         user=moonlanding_user_2,
     )
     return exp

@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from app.models.collaborator import CollaboratorPublic
 from app.models.core import CoreModel, IDModelMixin
 from app.models.experiment import (
     ExperimentBase,
@@ -42,9 +43,10 @@ class ExperimentFullInDB(ExperimentInDB):
 class ExperimentFullPublic(ExperimentPublic):
     name: Optional[str]
     owner: Optional[str]
-    collaborators: Optional[List[UserInDB]]
+    collaborators: Optional[List[CollaboratorPublic]]
 
 
 class DeletedExperimentFullPublic(IDModelMixin, CoreModel):
-    collaborators_user_id: Optional[List[int]]
-    collaborators_whitelist_id: Optional[List[int]]
+    user_ids: Optional[List[int]]
+    whitelist_ids: Optional[List[int]]
+    collaborators_ids: Optional[List[int]]
