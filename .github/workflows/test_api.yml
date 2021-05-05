@@ -23,4 +23,4 @@ jobs:
                   docker-compose up -d --build
             - name: Build test server
               run: |
-                  docker exec redapi_server_1 pytest -v
+                  docker exec collaborative-training-auth_server_1 pytest -v
