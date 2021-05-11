@@ -162,7 +162,6 @@ async def update_experiment_by_id(
                     collaborators_repo=collaborators_repo,
                     users_repo=users_repo,
                 )
-
     experiment_update = ExperimentUpdate(**experiment_full_update.dict(exclude_unset=True))
     experiment = await experiments_repo.update_experiment_by_id(id_exp=id, experiment_update=experiment_update)
 
@@ -239,18 +238,6 @@ async def join_experiment_by_id(
 
     whitelist_item = None
     for whitelist_item_tmp in all_experiment_id_items:
-        collaborators_list = await collaborators_repo.list_all_collaborator_by_whitelist_item_id(
-            whitelist_item_id=whitelist_item_tmp.id
-        )
-
-        # Check if a collaborator in the same experiment hasn't already use the same public key
-        for collaborator in collaborators_list:
-            if collaborator and collaborator.peer_public_key == experiment_join_input.peer_public_key:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Access to the experiment denied, the public key is already taken.",
-                )
-
         user_db = await users_repo.get_user_by_id(id=whitelist_item_tmp.user_id)
 
         if user_db.username == user.username:
