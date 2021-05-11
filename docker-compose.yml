@@ -4,6 +4,7 @@ services:
         build:
             context: ./backend
             dockerfile: Dockerfile
+        restart: always
         volumes:
             - ./backend/:/backend/
         command: uvicorn app.api.server:app --reload --workers 1 --host 0.0.0.0 --port 8000
@@ -15,6 +16,7 @@ services:
             - db
     db:
         image: postgres:13-alpine
+        restart: always
         volumes:
             - postgres_data:/var/lib/postgresql/data/
         env_file:
