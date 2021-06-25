@@ -36,5 +36,6 @@ Once your service is running, you can consult the documentation by copy-pasting 
 Run tests
 
 ```Bash
-docker exec -it redapi_server_1 pytest -vv
+docker-compose up -d --build
+docker exec collaborative-training-auth_server_1 pytest -v
 ```
