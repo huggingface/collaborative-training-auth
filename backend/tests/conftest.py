@@ -133,7 +133,17 @@ async def client_wt_auth_user_1(app: FastAPI, moonlanding_user_1: MoonlandingUse
 async def test_experiment_1_created_by_user_1(db: Database, moonlanding_user_1: MoonlandingUser) -> ExperimentPublic:
     experiments_repo = ExperimentsRepository(db)
 
-    new_experiment = ExperimentCreatePublic(organization_name="org_1", model_name="model_1")
+    organization_name = "org_1"
+    model_name = "model_1"
+
+    experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
+        organization_name=organization_name, model_name=model_name
+    )
+
+    if experiment:
+        return experiment
+
+    new_experiment = ExperimentCreatePublic(organization_name=organization_name, model_name=model_name)
     new_exp = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
@@ -142,28 +152,29 @@ async def test_experiment_1_created_by_user_1(db: Database, moonlanding_user_1: 
     return new_exp
 
 
-# #TODO
-# @pytest.fixture
-# async def test_experiment_2_created_by_user_1(
-#     db: Database, moonlanding_user_1: MoonlandingUser
-# ) -> ExperimentFullPublic:
-#     experiments_repo = ExperimentsRepository(db)
-#     users_repo = UsersRepository(db)
-#     whitelist_repo = WhitelistRepository(db)
-#     collaborators_repo = CollaboratorsRepository(db)
+@pytest.fixture
+async def test_experiment_2_created_by_user_1_for_updates_tests(
+    db: Database, moonlanding_user_1: MoonlandingUser
+) -> ExperimentPublic:
+    experiments_repo = ExperimentsRepository(db)
 
-#     new_experiment = ExperimentFullCreatePublic(
-#         name="fake experiment 2 created by User1 name",
-#         collaborators=[UserCreate(username="User1"), UserCreate(username="User4"), UserCreate(username="User5")],
-#     )
-#     return await create_new_experiment(
-#         new_experiment=new_experiment,
-#         experiments_repo=experiments_repo,
-#         users_repo=users_repo,
-#         whitelist_repo=whitelist_repo,
-#         collaborators_repo=collaborators_repo,
-#         user=moonlanding_user_1,
-#     )
+    organization_name = "organization_a"
+    model_name = "model_1"
+
+    experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
+        organization_name=organization_name, model_name=model_name
+    )
+
+    if experiment:
+        return experiment
+
+    new_experiment = ExperimentCreatePublic(organization_name=organization_name, model_name=model_name)
+    new_exp = await create_new_experiment(
+        new_experiment=new_experiment,
+        experiments_repo=experiments_repo,
+        user=moonlanding_user_1,
+    )
+    return new_exp
 
 
 @pytest.fixture
@@ -210,8 +221,18 @@ async def client_wt_auth_user_2(app: FastAPI, moonlanding_user_2: MoonlandingUse
 @pytest.fixture
 async def test_experiment_1_created_by_user_2(db: Database, moonlanding_user_2: MoonlandingUser) -> ExperimentPublic:
     experiments_repo = ExperimentsRepository(db)
+    organization_name = "org_3"
+    model_name = "model_1"
 
-    new_experiment = ExperimentCreatePublic(organization_name="org_3", model_name="model_1")
+    experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
+        organization_name=organization_name, model_name=model_name
+    )
+
+    if experiment:
+        return experiment
+
+    new_experiment = ExperimentCreatePublic(organization_name=organization_name, model_name=model_name)
+
     experiment = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,

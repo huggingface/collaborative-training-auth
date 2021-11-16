@@ -15,7 +15,7 @@
 import base64
 import datetime
 from ipaddress import IPv4Address, IPv6Address
-from typing import List
+from typing import List, Union
 
 import pytest
 from cryptography.hazmat.primitives import hashes
@@ -175,21 +175,71 @@ class TestGetExperimentById:
         assert res.status_code == status_code
 
 
-#     async def test_list_all_user_experiments_returns_valid_response(
-#         self,
-#         app: FastAPI,
-#         client_wt_auth_user_1: AsyncClient,
-#         test_experiment_1_created_by_user_1: ExperimentFullPublic,
-#         test_experiment_2_created_by_user_1: ExperimentFullPublic,
-#     ) -> None:
-#         res = await client_wt_auth_user_1.get(app.url_path_for("experiments:list-all-user-experiments"))
+class TestGetExperimentByOrgAndModelName:
+    async def test_get_experiment_by_org_and_model_name_valid_query_by_user_1(
+        self,
+        app: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
+    ) -> None:
+        res = await client_wt_auth_user_1.get(
+            app.url_path_for("experiments:get-experiment-by-organization-and-model-name"),
+            params={
+                "organization_name": test_experiment_1_created_by_user_1.organization_name,
+                "model_name": test_experiment_1_created_by_user_1.model_name,
+            },
+        )
+        assert res.status_code == status.HTTP_200_OK
+        experiment = ExperimentPublic(**res.json())
+        assert experiment.organization_name == test_experiment_1_created_by_user_1.organization_name
+        assert experiment.model_name == test_experiment_1_created_by_user_1.model_name
+        assert experiment.id == test_experiment_1_created_by_user_1.id
+        assert experiment.coordinator_ip == test_experiment_1_created_by_user_1.coordinator_ip
+        assert experiment.coordinator_port == test_experiment_1_created_by_user_1.coordinator_port
+        assert experiment.creator == test_experiment_1_created_by_user_1.creator
 
-#         assert res.status_code == status.HTTP_200_OK
-#         assert isinstance(res.json(), list)
-#         assert len(res.json()) > 0
-#         experiments = [ExperimentFullPublic(**exp) for exp in res.json()]
-#         assert test_experiment_1_created_by_user_1 in experiments
-#         assert test_experiment_2_created_by_user_1 in experiments
+    async def test_get_experiment_by_id_unvalid_query_by_user_1(
+        self,
+        app: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        test_experiment_1_created_by_user_2: ExperimentPublic,
+    ) -> None:
+        res = await client_wt_auth_user_1.get(
+            app.url_path_for("experiments:get-experiment-by-organization-and-model-name"),
+            params={
+                "organization_name": test_experiment_1_created_by_user_2.organization_name,
+                "model_name": test_experiment_1_created_by_user_2.model_name,
+            },
+        )
+        assert res.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @pytest.mark.parametrize(
+        "organization_name, model_name, status_code",
+        (
+            (500, 500, 401),
+            (-1, 500, 401),
+            (None, 500, 401),
+            (500, 500, 401),
+            (500, -1, 401),
+            (500, None, 401),
+        ),
+    )
+    async def test_wrong_id_returns_error(
+        self,
+        app: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        organization_name: int,
+        model_name: int,
+        status_code: int,
+    ) -> None:
+        res = await client_wt_auth_user_1.get(
+            app.url_path_for("experiments:get-experiment-by-organization-and-model-name"),
+            params={
+                "organization_name": organization_name,
+                "model_name": model_name,
+            },
+        )
+        assert res.status_code == status_code
 
 
 class TestUpdateExperiment:
@@ -217,8 +267,8 @@ class TestUpdateExperiment:
                 ],
                 [
                     "model_4",
-                    "00.00.00.00",
-                    80,
+                    "01.00.00.00",
+                    890,
                 ],
             ),
             (
@@ -229,10 +279,10 @@ class TestUpdateExperiment:
                     "coordinator_port",
                 ],
                 [
-                    "organization_a",
+                    "Organization_a",
                     "model_4",
-                    "00.00.00.00",
-                    80,
+                    "02.00.00.00",
+                    880,
                 ],
             ),
         ),
@@ -241,25 +291,29 @@ class TestUpdateExperiment:
         self,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_1: ExperimentPublic,
+        test_experiment_2_created_by_user_1_for_updates_tests: ExperimentPublic,
         attrs_to_change: List[str],
         values: List[str],
     ) -> None:
         _ = ExperimentUpdate(**{attrs_to_change[i]: values[i] for i in range(len(attrs_to_change))})
         experiment_update = {"experiment_update": {attrs_to_change[i]: values[i] for i in range(len(attrs_to_change))}}
         res = await client_wt_auth_user_1.put(
-            app.url_path_for("experiments:update-experiment-by-id", id=test_experiment_1_created_by_user_1.id),
+            app.url_path_for(
+                "experiments:update-experiment-by-id", id=test_experiment_2_created_by_user_1_for_updates_tests.id
+            ),
             json=experiment_update,
         )
         assert res.status_code == status.HTTP_200_OK
         updated_experiment = ExperimentPublic(**res.json())
-        assert updated_experiment.id == test_experiment_1_created_by_user_1.id  # make sure it's the same experiment
+        assert (
+            updated_experiment.id == test_experiment_2_created_by_user_1_for_updates_tests.id
+        )  # make sure it's the same experiment
 
         # make sure that any attribute we updated has changed to the correct value
         for attr_to_change, value in zip(attrs_to_change, values):
             # Beware, this can raise an error if someone ask to removed user not whitelisted (and it isn't an error)
             assert getattr(updated_experiment, attr_to_change) != getattr(
-                test_experiment_1_created_by_user_1, attr_to_change
+                test_experiment_2_created_by_user_1_for_updates_tests, attr_to_change
             )
             final_value = getattr(updated_experiment, attr_to_change)
             if isinstance(final_value, IPv4Address):
@@ -271,7 +325,7 @@ class TestUpdateExperiment:
         # make sure that no other attributes' values have changed
         for attr, value in updated_experiment.dict().items():
             if attr not in attrs_to_change and attr != "updated_at":
-                final_value = getattr(test_experiment_1_created_by_user_1, attr)
+                final_value = getattr(test_experiment_2_created_by_user_1_for_updates_tests, attr)
 
                 if isinstance(final_value, IPv4Address):
                     assert final_value == IPv4Address(value)
@@ -280,7 +334,7 @@ class TestUpdateExperiment:
                 else:
                     assert final_value == value
             if attr == "updated_at":
-                assert getattr(test_experiment_1_created_by_user_1, attr) != value
+                assert getattr(test_experiment_2_created_by_user_1_for_updates_tests, attr) != value
 
     @pytest.mark.parametrize(
         "id, payload, status_code",
@@ -671,7 +725,6 @@ class TestJoinExperimentByOrgAndModelName:
             },
         )
         assert res.status_code == status.HTTP_200_OK, res.content
-
         exp_pass = ExperimentJoinOutput(**res.json())
         assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
         assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
