@@ -26,6 +26,12 @@ from sqlalchemy import create_engine, engine_from_config, pool
 # we're appending the app directory to our path here so that we can import config easily
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[3]))
 from app.core.config import DATABASE_URL, POSTGRES_DB  # noqa
+from app.db.models import metadata  # noqa
+
+
+# add your model's MetaData object here
+# for 'autogenerate' support
+target_metadata = metadata
 
 
 # Alembic Config object, which provides access to values within the .ini file
@@ -61,7 +67,7 @@ def run_migrations_online() -> None:
         )
 
     with connectable.connect() as connection:
-        alembic.context.configure(connection=connection, target_metadata=None)
+        alembic.context.configure(connection=connection, target_metadata=target_metadata)
         with alembic.context.begin_transaction():
             alembic.context.run_migrations()
 
@@ -73,7 +79,7 @@ def run_migrations_offline() -> None:
     if os.environ.get("TESTING"):
         raise DatabaseError("Running testing migrations offline currently not permitted.")
 
-    alembic.context.configure(url=str(DATABASE_URL))
+    alembic.context.configure(url=str(DATABASE_URL), target_metadata=target_metadata)
     with alembic.context.begin_transaction():
         alembic.context.run_migrations()
 

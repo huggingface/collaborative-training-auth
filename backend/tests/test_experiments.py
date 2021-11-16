@@ -18,15 +18,15 @@ from ipaddress import IPv4Address, IPv6Address
 from typing import List
 
 import pytest
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from fastapi import FastAPI, status
 from httpx import AsyncClient
 
 from app.api.dependencies import crypto
-from app.models.experiment import ExperimentCreate
-from app.models.experiment_full import ExperimentFullCreatePublic, ExperimentFullPublic, ExperimentFullUpdate
+from app.models.experiment import ExperimentCreate, ExperimentCreatePublic, ExperimentPublic, ExperimentUpdate
 from app.models.experiment_join import ExperimentJoinInput, ExperimentJoinOutput
-from app.models.user import UserCreate
-from app.services.authentication import authenticate
 
 
 # decorate all tests with @pytest.mark.asyncio
@@ -35,7 +35,23 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def new_experiment():
-    return ExperimentFullCreatePublic(name="test experiment", collaborators=[UserCreate(username="peter")])
+    return ExperimentCreatePublic(organization_name="organization_a", model_name="model-a")
+
+
+def encrypt_msg(msg: str, public_key: RSAPublicKey):
+
+    ciphertext = public_key.encrypt(
+        msg.encode(), padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+    )
+    return ciphertext
+
+
+def decrypt_msg(ciphertext: str, private_key: RSAPrivateKey):
+
+    plaintext = private_key.decrypt(
+        ciphertext, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+    )
+    return plaintext.decode()
 
 
 class TestExperimentsRoutes:
@@ -52,13 +68,9 @@ class TestCreateExperiment:
     @pytest.mark.parametrize(
         "new_experiment",
         (
-            (ExperimentFullCreatePublic(name="test 2")),
-            (ExperimentFullCreatePublic(name="test 3", collaborators=[UserCreate(username="peter")])),
-            (
-                ExperimentFullCreatePublic(
-                    name="test 4", collaborators=[UserCreate(username="peter"), UserCreate(username="jane")]
-                )
-            ),
+            (ExperimentCreatePublic(organization_name="organization_a", model_name="model-a")),
+            (ExperimentCreatePublic(organization_name="Organization_a", model_name="modelA")),
+            (ExperimentCreatePublic(organization_name="org_1", model_name="modelA")),
         ),
     )
     async def test_valid_input(
@@ -66,7 +78,7 @@ class TestCreateExperiment:
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
         moonlanding_user_1,
-        new_experiment: dict,
+        new_experiment: ExperimentCreatePublic,
     ) -> None:
         res = await client_wt_auth_user_1.post(
             app.url_path_for("experiments:create-experiment"),
@@ -74,14 +86,10 @@ class TestCreateExperiment:
         )
         assert res.status_code == status.HTTP_201_CREATED
 
-        created_experiment = ExperimentFullPublic(**res.json())
-        assert created_experiment.name == new_experiment.name
-        assert created_experiment.owner == moonlanding_user_1.username
-
-        if new_experiment.collaborators:
-            username_list_init = [collaborator.username for collaborator in new_experiment.collaborators]
-            username_list_final = [collaborator.username for collaborator in created_experiment.collaborators]
-            assert username_list_final == username_list_init
+        created_experiment = ExperimentPublic(**res.json())
+        assert created_experiment.organization_name == new_experiment.organization_name
+        assert created_experiment.model_name == new_experiment.model_name
+        assert created_experiment.creator == moonlanding_user_1.username
 
     @pytest.mark.parametrize(
         "invalid_payload, status_code",
@@ -98,6 +106,25 @@ class TestCreateExperiment:
         )
         assert res.status_code == status_code
 
+    @pytest.mark.parametrize(
+        "new_experiment, status_code",
+        (
+            (ExperimentCreatePublic(organization_name="org_2", model_name="model-a"), 401),
+            (ExperimentCreatePublic(organization_name="fake_org", model_name="model-a"), 401),
+        ),
+    )
+    async def test_not_admin_raises_error(
+        self,
+        app: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        new_experiment: ExperimentCreatePublic,
+        status_code: int,
+    ) -> None:
+        res = await client_wt_auth_user_1.post(
+            app.url_path_for("experiments:create-experiment"), json={"new_experiment": new_experiment.dict()}
+        )
+        assert res.status_code == status_code
+
     async def test_unauthenticated_user_unable_to_create_experiment(
         self, app: FastAPI, client: AsyncClient, new_experiment: ExperimentCreate
     ) -> None:
@@ -108,25 +135,25 @@ class TestCreateExperiment:
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-class TestGetExperiment:
+class TestGetExperimentById:
     async def test_get_experiment_by_id_valid_query_by_user_1(
         self,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_1: ExperimentFullPublic,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
     ) -> None:
         res = await client_wt_auth_user_1.get(
             app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_1.id)
         )
         assert res.status_code == status.HTTP_200_OK
-        experiment = ExperimentFullPublic(**res.json())
+        experiment = ExperimentPublic(**res.json())
         assert experiment == test_experiment_1_created_by_user_1
 
     async def test_get_experiment_by_id_unvalid_query_by_user_1(
         self,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_2: ExperimentFullPublic,
+        test_experiment_1_created_by_user_2: ExperimentPublic,
     ) -> None:
         res = await client_wt_auth_user_1.get(
             app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
@@ -136,8 +163,8 @@ class TestGetExperiment:
     @pytest.mark.parametrize(
         "id, status_code",
         (
-            (500, 404),
-            (-1, 404),
+            (500, 401),
+            (-1, 401),
             (None, 422),
         ),
     )
@@ -147,58 +174,65 @@ class TestGetExperiment:
         res = await client_wt_auth_user_1.get(app.url_path_for("experiments:get-experiment-by-id", id=id))
         assert res.status_code == status_code
 
-    async def test_list_all_user_experiments_returns_valid_response(
-        self,
-        app: FastAPI,
-        client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_1: ExperimentFullPublic,
-        test_experiment_2_created_by_user_1: ExperimentFullPublic,
-    ) -> None:
-        res = await client_wt_auth_user_1.get(app.url_path_for("experiments:list-all-user-experiments"))
 
-        assert res.status_code == status.HTTP_200_OK
-        assert isinstance(res.json(), list)
-        assert len(res.json()) > 0
-        experiments = [ExperimentFullPublic(**exp) for exp in res.json()]
-        assert test_experiment_1_created_by_user_1 in experiments
-        assert test_experiment_2_created_by_user_1 in experiments
+#     async def test_list_all_user_experiments_returns_valid_response(
+#         self,
+#         app: FastAPI,
+#         client_wt_auth_user_1: AsyncClient,
+#         test_experiment_1_created_by_user_1: ExperimentFullPublic,
+#         test_experiment_2_created_by_user_1: ExperimentFullPublic,
+#     ) -> None:
+#         res = await client_wt_auth_user_1.get(app.url_path_for("experiments:list-all-user-experiments"))
+
+#         assert res.status_code == status.HTTP_200_OK
+#         assert isinstance(res.json(), list)
+#         assert len(res.json()) > 0
+#         experiments = [ExperimentFullPublic(**exp) for exp in res.json()]
+#         assert test_experiment_1_created_by_user_1 in experiments
+#         assert test_experiment_2_created_by_user_1 in experiments
 
 
 class TestUpdateExperiment:
     @pytest.mark.parametrize(
-        "attrs_to_change, update_keys, values",
+        "attrs_to_change, values",
         (
-            (
-                ["collaborators"],
-                ["added_collaborators"],
-                [[UserCreate(username="User9").dict(), UserCreate(username="User1").dict()]],
-            ),
-            (
-                ["collaborators"],
-                ["removed_collaborators"],
-                [[UserCreate(username="User3").dict(), UserCreate(username="user3").dict()]],
-            ),
-            (["coordinator_ip"], ["coordinator_ip"], ["192.0.2.0"]),
-            (["coordinator_ip"], ["coordinator_ip"], ["684D:1111:222:3333:4444:5555:6:77"]),
-            (["coordinator_port"], ["coordinator_port"], [400]),
+            (["coordinator_ip"], ["192.0.2.0"]),
+            (["coordinator_ip"], ["684D:1111:222:3333:4444:5555:6:77"]),
+            (["coordinator_port"], [400]),
             (
                 [
                     "coordinator_ip",
                     "coordinator_port",
-                    "collaborators",
-                    "collaborators",
-                ],
-                [
-                    "coordinator_ip",
-                    "coordinator_port",
-                    "added_collaborators",
-                    "removed_collaborators",
                 ],
                 [
                     "00.00.00.00",
                     80,
-                    [UserCreate(username="User7").dict(), UserCreate(username="User8").dict()],
-                    [UserCreate(username="User1").dict(), UserCreate(username="User2").dict()],
+                ],
+            ),
+            (
+                [
+                    "model_name",
+                    "coordinator_ip",
+                    "coordinator_port",
+                ],
+                [
+                    "model_4",
+                    "00.00.00.00",
+                    80,
+                ],
+            ),
+            (
+                [
+                    "organization_name",
+                    "model_name",
+                    "coordinator_ip",
+                    "coordinator_port",
+                ],
+                [
+                    "organization_a",
+                    "model_4",
+                    "00.00.00.00",
+                    80,
                 ],
             ),
         ),
@@ -207,50 +241,33 @@ class TestUpdateExperiment:
         self,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_1: ExperimentFullPublic,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
         attrs_to_change: List[str],
-        update_keys: List[str],
         values: List[str],
     ) -> None:
-        _ = ExperimentFullUpdate(**{update_keys[i]: values[i] for i in range(len(attrs_to_change))})
-        experiment_full_update = {
-            "experiment_full_update": {update_keys[i]: values[i] for i in range(len(attrs_to_change))}
-        }
+        _ = ExperimentUpdate(**{attrs_to_change[i]: values[i] for i in range(len(attrs_to_change))})
+        experiment_update = {"experiment_update": {attrs_to_change[i]: values[i] for i in range(len(attrs_to_change))}}
         res = await client_wt_auth_user_1.put(
             app.url_path_for("experiments:update-experiment-by-id", id=test_experiment_1_created_by_user_1.id),
-            json=experiment_full_update,
+            json=experiment_update,
         )
         assert res.status_code == status.HTTP_200_OK
-        updated_experiment = ExperimentFullPublic(**res.json())
+        updated_experiment = ExperimentPublic(**res.json())
         assert updated_experiment.id == test_experiment_1_created_by_user_1.id  # make sure it's the same experiment
 
         # make sure that any attribute we updated has changed to the correct value
-        for attr_to_change, update_key, value in zip(attrs_to_change, update_keys, values):
+        for attr_to_change, value in zip(attrs_to_change, values):
             # Beware, this can raise an error if someone ask to removed user not whitelisted (and it isn't an error)
             assert getattr(updated_experiment, attr_to_change) != getattr(
                 test_experiment_1_created_by_user_1, attr_to_change
             )
-            if update_key == "added_collaborators":
-                for collaborator_to_add in value:
-                    assert collaborator_to_add in [
-                        UserCreate(**collaborator.dict()).dict()
-                        for collaborator in getattr(updated_experiment, attr_to_change)
-                    ]
-            elif update_key == "removed_collaborators":
-                for collaborator_to_remove in value:
-                    assert collaborator_to_remove not in [
-                        UserCreate(**collaborator.dict()).dict()
-                        for collaborator in getattr(updated_experiment, attr_to_change)
-                    ]
+            final_value = getattr(updated_experiment, attr_to_change)
+            if isinstance(final_value, IPv4Address):
+                assert final_value == IPv4Address(value)
+            elif isinstance(final_value, IPv6Address):
+                assert final_value == IPv6Address(value)
             else:
-                final_value = getattr(updated_experiment, attr_to_change)
-                if isinstance(final_value, IPv4Address):
-                    assert final_value == IPv4Address(value)
-                elif isinstance(final_value, IPv6Address):
-                    assert final_value == IPv6Address(value)
-                else:
-                    assert final_value == value
-
+                assert final_value == value
         # make sure that no other attributes' values have changed
         for attr, value in updated_experiment.dict().items():
             if attr not in attrs_to_change and attr != "updated_at":
@@ -268,10 +285,10 @@ class TestUpdateExperiment:
     @pytest.mark.parametrize(
         "id, payload, status_code",
         (
-            (-1, {"name": "test"}, 422),
-            (0, {"name": "test2"}, 422),
-            (500, {}, 404),
-            (500, {"name": "test3"}, 404),
+            (-1, {"organization_name": "test"}, 422),
+            (0, {"organization_name": "test2"}, 422),
+            (500, {}, 401),
+            (500, {"organization_name": "test3"}, 401),
         ),
     )
     async def test_update_experiment_with_invalid_input_throws_error(
@@ -282,7 +299,7 @@ class TestUpdateExperiment:
         payload: dict,
         status_code: int,
     ) -> None:
-        experiment_full_update = {"experiment_full_update": payload}
+        experiment_full_update = {"experiment_update": payload}
         res = await client_wt_auth_user_1.put(
             app.url_path_for("experiments:update-experiment-by-id", id=id),
             json=experiment_full_update,
@@ -295,7 +312,7 @@ class TestDeleteExperiment:
         self,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_1: ExperimentFullPublic,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
     ) -> None:
         # delete the experiment
         res = await client_wt_auth_user_1.delete(
@@ -306,13 +323,13 @@ class TestDeleteExperiment:
         res = await client_wt_auth_user_1.get(
             app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_1.id)
         )
-        assert res.status_code == status.HTTP_404_NOT_FOUND
+        assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
     async def test_cant_delete_other_user_experiment(
         self,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_2: ExperimentFullPublic,
+        test_experiment_1_created_by_user_2: ExperimentPublic,
     ) -> None:
         # delete the experiment
         res = await client_wt_auth_user_1.delete(
@@ -323,7 +340,7 @@ class TestDeleteExperiment:
     @pytest.mark.parametrize(
         "id, status_code",
         (
-            (500, 404),
+            (500, 401),
             (0, 422),
             (-1, 422),
             (None, 422),
@@ -334,7 +351,7 @@ class TestDeleteExperiment:
         moonlanding_user_1,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_1_created_by_user_1: ExperimentFullPublic,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
         id: int,
         status_code: int,
     ) -> None:
@@ -348,28 +365,29 @@ class TestJoinExperiment:
         moonlanding_user_1,
         moonlanding_user_2,
         app: FastAPI,
-        client_wt_auth_user_1: AsyncClient,
+        client_wt_auth_user_2: AsyncClient,
         # client_wt_auth_user_2: AsyncClient,
-        test_experiment_1_created_by_user_2: ExperimentFullPublic,
-        test_experiment_join_input_1_by_user_1: ExperimentJoinInput,
-        test_experiment_join_input_2_by_user_1: ExperimentJoinInput,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
+        test_experiment_join_input_1_by_user_2: ExperimentJoinInput,
+        test_experiment_join_input_2_by_user_2: ExperimentJoinInput,
     ) -> None:
-        values = test_experiment_join_input_1_by_user_1.dict()
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
-        res = await client_wt_auth_user_1.put(
-            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id),
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_1.id),
             json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_200_OK, res.content
 
         exp_pass = ExperimentJoinOutput(**res.json())
-        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_2.coordinator_ip
-        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_2.coordinator_port
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
 
         hivemind_access = getattr(exp_pass, "hivemind_access")
-        assert getattr(hivemind_access, "peer_public_key") == test_experiment_join_input_1_by_user_1.peer_public_key
+        assert getattr(hivemind_access, "peer_public_key") == join_input_1.peer_public_key
 
         signature = base64.b64decode(getattr(hivemind_access, "signature"))
 
@@ -384,25 +402,27 @@ class TestJoinExperiment:
         )
         assert verif is None  # verify() returns None iff the signature is correct
         assert hivemind_access.expiration_time > datetime.datetime.utcnow()
-        assert hivemind_access.username == moonlanding_user_1.username
+        assert hivemind_access.username == moonlanding_user_2.username
 
         # Now the same user try to join a second time with another public key
-        values = test_experiment_join_input_2_by_user_1.dict()
+        join_input_2, private_key_input_2 = test_experiment_join_input_2_by_user_2
+        values = join_input_2.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
-        res = await client_wt_auth_user_1.put(
-            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id),
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_1.id),
             json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_200_OK, res.content
 
         exp_pass = ExperimentJoinOutput(**res.json())
-        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_2.coordinator_ip
-        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_2.coordinator_port
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
 
         hivemind_access = getattr(exp_pass, "hivemind_access")
-        assert getattr(hivemind_access, "peer_public_key") == test_experiment_join_input_2_by_user_1.peer_public_key
+        peer_public_key = getattr(hivemind_access, "peer_public_key")
+        assert peer_public_key == join_input_2.peer_public_key
 
         signature = base64.b64decode(getattr(hivemind_access, "signature"))
 
@@ -417,67 +437,77 @@ class TestJoinExperiment:
         )
         assert verif is None  # verify() returns None iff the signature is correct
         assert hivemind_access.expiration_time > datetime.datetime.utcnow()
-        assert hivemind_access.username == moonlanding_user_1.username
+        assert hivemind_access.username == moonlanding_user_2.username
 
-        # Verify if the 2 public keys have been saved in DB
+        msg = "this is a test"
+        ciphertext = encrypt_msg(msg, crypto.load_public_key(peer_public_key))
+        plaintext = decrypt_msg(ciphertext, private_key_input_2)
+        assert plaintext == msg
 
-        app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
+        with pytest.raises(Exception):
+            plaintext = decrypt_msg(ciphertext, private_key_input_1)
 
-        res = await client_wt_auth_user_1.get(
-            app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
-        )
-        assert res.status_code == status.HTTP_200_OK
-        experiment = ExperimentFullPublic(**res.json())
+    #         # Verify if the 2 public keys have been saved in DB
 
-        username_found = False
-        public_key_1_found = False
-        public_key_2_found = False
+    #         app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
 
-        collaborators_list = experiment.collaborators
-        for collaborator in collaborators_list:
-            if (
-                collaborator.username == moonlanding_user_1.username
-                and collaborator.peer_public_key == test_experiment_join_input_1_by_user_1.peer_public_key
-            ):
-                username_found = True
-                public_key_1_found = True
-            if (
-                collaborator.username == moonlanding_user_1.username
-                and collaborator.peer_public_key == test_experiment_join_input_2_by_user_1.peer_public_key
-            ):
-                username_found = True
-                public_key_2_found = True
+    #         res = await client_wt_auth_user_1.get(
+    #             app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
+    #         )
+    #         assert res.status_code == status.HTTP_200_OK
+    #         experiment = ExperimentFullPublic(**res.json())
 
-        assert username_found
-        assert public_key_1_found
-        assert public_key_2_found
+    #         username_found = False
+    #         public_key_1_found = False
+    #         public_key_2_found = False
+
+    #         collaborators_list = experiment.collaborators
+    #         for collaborator in collaborators_list:
+    #             if (
+    #                 collaborator.username == moonlanding_user_1.username
+    #                 and collaborator.peer_public_key == test_experiment_join_input_1_by_user_2.peer_public_key
+    #             ):
+    #                 username_found = True
+    #                 public_key_1_found = True
+    #             if (
+    #                 collaborator.username == moonlanding_user_1.username
+    #                 and collaborator.peer_public_key == test_experiment_join_input_2_by_user_2.peer_public_key
+    #             ):
+    #                 username_found = True
+    #                 public_key_2_found = True
+
+    #         assert username_found
+    #         assert public_key_1_found
+    #         assert public_key_2_found
 
     async def test_can_join_experiment_successfully_2_times_with_same_public_key(
         self,
         moonlanding_user_1,
         moonlanding_user_2,
         app: FastAPI,
-        client_wt_auth_user_1: AsyncClient,
+        client_wt_auth_user_2: AsyncClient,
         # client_wt_auth_user_2: AsyncClient,
-        test_experiment_1_created_by_user_2: ExperimentFullPublic,
-        test_experiment_join_input_1_by_user_1: ExperimentJoinInput,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
+        test_experiment_join_input_1_by_user_2: ExperimentJoinInput,
+        test_experiment_join_input_2_by_user_2: ExperimentJoinInput,
     ) -> None:
-        values = test_experiment_join_input_1_by_user_1.dict()
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
-        res = await client_wt_auth_user_1.put(
-            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id),
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_1.id),
             json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_200_OK, res.content
 
         exp_pass = ExperimentJoinOutput(**res.json())
-        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_2.coordinator_ip
-        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_2.coordinator_port
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
 
         hivemind_access = getattr(exp_pass, "hivemind_access")
-        assert getattr(hivemind_access, "peer_public_key") == test_experiment_join_input_1_by_user_1.peer_public_key
+        assert getattr(hivemind_access, "peer_public_key") == join_input_1.peer_public_key
 
         signature = base64.b64decode(getattr(hivemind_access, "signature"))
 
@@ -492,25 +522,26 @@ class TestJoinExperiment:
         )
         assert verif is None  # verify() returns None iff the signature is correct
         assert hivemind_access.expiration_time > datetime.datetime.utcnow()
-        assert hivemind_access.username == moonlanding_user_1.username
+        assert hivemind_access.username == moonlanding_user_2.username
 
-        # Now the same user try to join a second time with another public key
-        values = test_experiment_join_input_1_by_user_1.dict()
+        # Now the same user try to join a second time with the same public key
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
-        res = await client_wt_auth_user_1.put(
-            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id),
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_1.id),
             json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_200_OK, res.content
 
         exp_pass = ExperimentJoinOutput(**res.json())
-        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_2.coordinator_ip
-        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_2.coordinator_port
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
 
         hivemind_access = getattr(exp_pass, "hivemind_access")
-        assert getattr(hivemind_access, "peer_public_key") == test_experiment_join_input_1_by_user_1.peer_public_key
+        assert getattr(hivemind_access, "peer_public_key") == join_input_1.peer_public_key
 
         signature = base64.b64decode(getattr(hivemind_access, "signature"))
 
@@ -525,47 +556,48 @@ class TestJoinExperiment:
         )
         assert verif is None  # verify() returns None iff the signature is correct
         assert hivemind_access.expiration_time > datetime.datetime.utcnow()
-        assert hivemind_access.username == moonlanding_user_1.username
+        assert hivemind_access.username == moonlanding_user_2.username
 
-        # Verify if the 2 public keys have been saved in DB
+        # # Verify if the 2 public keys have been saved in DB
 
-        app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
+        # app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
 
-        res = await client_wt_auth_user_1.get(
-            app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
-        )
-        assert res.status_code == status.HTTP_200_OK
-        experiment = ExperimentFullPublic(**res.json())
+        # res = await client_wt_auth_user_1.get(
+        #     app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
+        # )
+        # assert res.status_code == status.HTTP_200_OK
+        # experiment = ExperimentFullPublic(**res.json())
 
-        username_found = False
-        public_key_found = 0
+        # username_found = False
+        # public_key_found = 0
 
-        collaborators_list = experiment.collaborators
-        for collaborator in collaborators_list:
-            if (
-                collaborator.username == moonlanding_user_1.username
-                and collaborator.peer_public_key == test_experiment_join_input_1_by_user_1.peer_public_key
-            ):
-                username_found = True
-                public_key_found += 1
+        # collaborators_list = experiment.collaborators
+        # for collaborator in collaborators_list:
+        #     if (
+        #         collaborator.username == moonlanding_user_1.username
+        #         and collaborator.peer_public_key == test_experiment_join_input_1_by_user_2.peer_public_key
+        #     ):
+        #         username_found = True
+        #         public_key_found += 1
 
-        assert username_found
-        assert public_key_found == 2
+        # assert username_found
+        # assert public_key_found == 2
 
-    async def test_cant_join_experiment_successfully_user_not_whitelisted(
+    async def test_cant_join_experiment_successfully_user_not_allowlisted(
         self,
         moonlanding_user_1,
         app: FastAPI,
         client_wt_auth_user_1: AsyncClient,
-        test_experiment_2_created_by_user_2: ExperimentFullPublic,
-        test_experiment_join_input_1_by_user_1: ExperimentJoinInput,
+        test_experiment_1_created_by_user_2: ExperimentPublic,
+        test_experiment_join_input_1_by_user_2: ExperimentJoinInput,
     ):
-        values = test_experiment_join_input_1_by_user_1.dict()
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
         # Make the values JSON serializable
         values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
 
         res = await client_wt_auth_user_1.put(
-            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_2_created_by_user_2.id),
+            app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id),
             json={"experiment_join_input": values},
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED, res.content

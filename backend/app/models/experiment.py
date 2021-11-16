@@ -24,7 +24,8 @@ class ExperimentBase(CoreModel):
     All common characteristics of our Experiment resource
     """
 
-    name: Optional[str]
+    organization_name: Optional[str]
+    model_name: Optional[str]
     coordinator_ip: Optional[IPvAnyAddress]
     coordinator_port: Optional[int]
 
@@ -39,11 +40,13 @@ class ExperimentBase(CoreModel):
 
 
 class ExperimentCreatePublic(ExperimentBase):
-    name: str
+    organization_name: str
+    model_name: str
 
 
 class ExperimentCreate(ExperimentBase):
-    name: str
+    organization_name: str
+    model_name: str
     auth_server_public_key: Optional[bytes]
     auth_server_private_key: Optional[bytes]
 
@@ -53,11 +56,20 @@ class ExperimentUpdate(ExperimentBase):
 
 
 class ExperimentInDB(IDModelMixin, DateTimeModelMixin, ExperimentBase):
-    name: str
-    owner: str
+    organization_name: str
+    model_name: str
+    creator: str
     auth_server_public_key: Optional[bytes]
     auth_server_private_key: Optional[bytes]
 
 
 class ExperimentPublic(IDModelMixin, DateTimeModelMixin, ExperimentBase):
-    owner: str
+    organization_name: str
+    model_name: str
+    creator: str
+    coordinator_ip: Optional[IPvAnyAddress]
+    coordinator_port: Optional[int]
+
+
+class DeletedExperimentPublic(IDModelMixin, CoreModel):
+    pass

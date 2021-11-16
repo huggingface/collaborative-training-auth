@@ -63,10 +63,8 @@ class TestAuthenticate(AsyncTestCase):
     def set_moonlanding_response(
         self,
     ):
-        resp: Dict[str, Any] = {
-            "name": "autotest",
-            "email": "auto@test.co",
-        }
+        # TODO non-user
+        resp: Dict[str, Any] = {"type": "user", "name": "autotest", "email": "auto@test.co", "orgs": []}
 
         self.moonlanding_mock.return_value = resp
 

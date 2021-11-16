@@ -12,8 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.#
+from enum import Enum
 from functools import partial
-from typing import Optional
+from typing import List, Optional
 
 import requests
 from fastapi import Depends, HTTPException
@@ -26,11 +27,23 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 HF_API = "https://huggingface.co/api"
 
 
+class RepoRole(Enum):
+    read = 1
+    write = 2
+    admin = 3
+
+
+class Organization(BaseModel):
+    name: str
+    role_in_org: RepoRole
+
+
 class MoonlandingUser(BaseModel):
     """Dataclass holding a user info"""
 
     username: str
     email: Optional[str]
+    orgs: Optional[List[Organization]]
 
 
 UnauthenticatedError = partial(
@@ -63,7 +76,12 @@ async def authenticate(credentials: Optional[HTTPAuthorizationCredentials] = Dep
     username = user_identity["name"]
     email = user_identity["email"]
 
-    return MoonlandingUser(username=username, email=email)
+    if user_identity["type"] != "user":
+        raise UnauthenticatedError(detail="Invalid credentials. You should use the credentials from a user.")
+
+    orgs = [Organization(name=org["name"], role_in_org=RepoRole[org["roleInOrg"]]) for org in user_identity["orgs"]]
+
+    return MoonlandingUser(username=username, email=email, orgs=orgs)
 
 
 def moonlanding_auth(token: str) -> dict:
