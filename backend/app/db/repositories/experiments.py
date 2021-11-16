@@ -37,8 +37,8 @@ GET_EXPERIMENT_BY_ID_QUERY = """
 GET_EXPERIMENT_BY_ORGANIZATON_AND_MODEL_NAME_QUERY = """
     SELECT id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
     FROM experiments
-    WHERE model_name = :model_name;
-    WHERE organization_name = :organization_name;
+    WHERE model_name = :model_name
+    AND organization_name = :organization_name;
 """
 LIST_ALL_USER_EXPERIMENTS_QUERY = """
     SELECT id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at

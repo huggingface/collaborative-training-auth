@@ -359,7 +359,7 @@ class TestDeleteExperiment:
         assert res.status_code == status_code
 
 
-class TestJoinExperiment:
+class TestJoinExperimentById:
     async def test_can_join_experiment_successfully(
         self,
         moonlanding_user_1,
@@ -447,39 +447,6 @@ class TestJoinExperiment:
         with pytest.raises(Exception):
             plaintext = decrypt_msg(ciphertext, private_key_input_1)
 
-    #         # Verify if the 2 public keys have been saved in DB
-
-    #         app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
-
-    #         res = await client_wt_auth_user_1.get(
-    #             app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
-    #         )
-    #         assert res.status_code == status.HTTP_200_OK
-    #         experiment = ExperimentFullPublic(**res.json())
-
-    #         username_found = False
-    #         public_key_1_found = False
-    #         public_key_2_found = False
-
-    #         collaborators_list = experiment.collaborators
-    #         for collaborator in collaborators_list:
-    #             if (
-    #                 collaborator.username == moonlanding_user_1.username
-    #                 and collaborator.peer_public_key == test_experiment_join_input_1_by_user_2.peer_public_key
-    #             ):
-    #                 username_found = True
-    #                 public_key_1_found = True
-    #             if (
-    #                 collaborator.username == moonlanding_user_1.username
-    #                 and collaborator.peer_public_key == test_experiment_join_input_2_by_user_2.peer_public_key
-    #             ):
-    #                 username_found = True
-    #                 public_key_2_found = True
-
-    #         assert username_found
-    #         assert public_key_1_found
-    #         assert public_key_2_found
-
     async def test_can_join_experiment_successfully_2_times_with_same_public_key(
         self,
         moonlanding_user_1,
@@ -558,31 +525,6 @@ class TestJoinExperiment:
         assert hivemind_access.expiration_time > datetime.datetime.utcnow()
         assert hivemind_access.username == moonlanding_user_2.username
 
-        # # Verify if the 2 public keys have been saved in DB
-
-        # app.dependency_overrides[authenticate] = lambda: moonlanding_user_2
-
-        # res = await client_wt_auth_user_1.get(
-        #     app.url_path_for("experiments:get-experiment-by-id", id=test_experiment_1_created_by_user_2.id)
-        # )
-        # assert res.status_code == status.HTTP_200_OK
-        # experiment = ExperimentFullPublic(**res.json())
-
-        # username_found = False
-        # public_key_found = 0
-
-        # collaborators_list = experiment.collaborators
-        # for collaborator in collaborators_list:
-        #     if (
-        #         collaborator.username == moonlanding_user_1.username
-        #         and collaborator.peer_public_key == test_experiment_join_input_1_by_user_2.peer_public_key
-        #     ):
-        #         username_found = True
-        #         public_key_found += 1
-
-        # assert username_found
-        # assert public_key_found == 2
-
     async def test_cant_join_experiment_successfully_user_not_allowlisted(
         self,
         moonlanding_user_1,
@@ -599,5 +541,220 @@ class TestJoinExperiment:
         res = await client_wt_auth_user_1.put(
             app.url_path_for("experiments:join-experiment-by-id", id=test_experiment_1_created_by_user_2.id),
             json={"experiment_join_input": values},
+        )
+        assert res.status_code == status.HTTP_401_UNAUTHORIZED, res.content
+
+
+class TestJoinExperimentByOrgAndModelName:
+    async def test_can_join_experiment_successfully(
+        self,
+        moonlanding_user_2,
+        app: FastAPI,
+        client_wt_auth_user_2: AsyncClient,
+        # client_wt_auth_user_2: AsyncClient,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
+        test_experiment_join_input_1_by_user_2: ExperimentJoinInput,
+        test_experiment_join_input_2_by_user_2: ExperimentJoinInput,
+    ) -> None:
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for(
+                "experiments:join-experiment-by-organization-and-model-name",
+            ),
+            json={"experiment_join_input": values},
+            params={
+                "organization_name": test_experiment_1_created_by_user_1.organization_name,
+                "model_name": test_experiment_1_created_by_user_1.model_name,
+            },
+        )
+        assert res.status_code == status.HTTP_200_OK, res.content
+
+        exp_pass = ExperimentJoinOutput(**res.json())
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
+
+        hivemind_access = getattr(exp_pass, "hivemind_access")
+        assert getattr(hivemind_access, "peer_public_key") == join_input_1.peer_public_key
+
+        signature = base64.b64decode(getattr(hivemind_access, "signature"))
+
+        auth_server_public_key = getattr(exp_pass, "auth_server_public_key")
+        auth_server_public_key = crypto.load_public_key(auth_server_public_key)
+
+        verif = auth_server_public_key.verify(
+            signature,
+            f"{hivemind_access.username} {hivemind_access.peer_public_key} {hivemind_access.expiration_time}".encode(),
+            crypto.PADDING,
+            crypto.HASH_ALGORITHM,
+        )
+        assert verif is None  # verify() returns None iff the signature is correct
+        assert hivemind_access.expiration_time > datetime.datetime.utcnow()
+        assert hivemind_access.username == moonlanding_user_2.username
+
+        # Now the same user try to join a second time with another public key
+        join_input_2, private_key_input_2 = test_experiment_join_input_2_by_user_2
+        values = join_input_2.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for(
+                "experiments:join-experiment-by-organization-and-model-name",
+            ),
+            json={"experiment_join_input": values},
+            params={
+                "organization_name": test_experiment_1_created_by_user_1.organization_name,
+                "model_name": test_experiment_1_created_by_user_1.model_name,
+            },
+        )
+        assert res.status_code == status.HTTP_200_OK, res.content
+
+        exp_pass = ExperimentJoinOutput(**res.json())
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
+
+        hivemind_access = getattr(exp_pass, "hivemind_access")
+        peer_public_key = getattr(hivemind_access, "peer_public_key")
+        assert peer_public_key == join_input_2.peer_public_key
+
+        signature = base64.b64decode(getattr(hivemind_access, "signature"))
+
+        auth_server_public_key = getattr(exp_pass, "auth_server_public_key")
+        auth_server_public_key = crypto.load_public_key(auth_server_public_key)
+
+        verif = auth_server_public_key.verify(
+            signature,
+            f"{hivemind_access.username} {hivemind_access.peer_public_key} {hivemind_access.expiration_time}".encode(),
+            crypto.PADDING,
+            crypto.HASH_ALGORITHM,
+        )
+        assert verif is None  # verify() returns None iff the signature is correct
+        assert hivemind_access.expiration_time > datetime.datetime.utcnow()
+        assert hivemind_access.username == moonlanding_user_2.username
+
+        msg = "this is a test"
+        ciphertext = encrypt_msg(msg, crypto.load_public_key(peer_public_key))
+        plaintext = decrypt_msg(ciphertext, private_key_input_2)
+        assert plaintext == msg
+
+        with pytest.raises(Exception):
+            plaintext = decrypt_msg(ciphertext, private_key_input_1)
+
+    async def test_can_join_experiment_successfully_2_times_with_same_public_key(
+        self,
+        moonlanding_user_1,
+        moonlanding_user_2,
+        app: FastAPI,
+        client_wt_auth_user_2: AsyncClient,
+        # client_wt_auth_user_2: AsyncClient,
+        test_experiment_1_created_by_user_1: ExperimentPublic,
+        test_experiment_join_input_1_by_user_2: ExperimentJoinInput,
+        test_experiment_join_input_2_by_user_2: ExperimentJoinInput,
+    ) -> None:
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for(
+                "experiments:join-experiment-by-organization-and-model-name",
+            ),
+            json={"experiment_join_input": values},
+            params={
+                "organization_name": test_experiment_1_created_by_user_1.organization_name,
+                "model_name": test_experiment_1_created_by_user_1.model_name,
+            },
+        )
+        assert res.status_code == status.HTTP_200_OK, res.content
+
+        exp_pass = ExperimentJoinOutput(**res.json())
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
+
+        hivemind_access = getattr(exp_pass, "hivemind_access")
+        assert getattr(hivemind_access, "peer_public_key") == join_input_1.peer_public_key
+
+        signature = base64.b64decode(getattr(hivemind_access, "signature"))
+
+        auth_server_public_key = getattr(exp_pass, "auth_server_public_key")
+        auth_server_public_key = crypto.load_public_key(auth_server_public_key)
+
+        verif = auth_server_public_key.verify(
+            signature,
+            f"{hivemind_access.username} {hivemind_access.peer_public_key} {hivemind_access.expiration_time}".encode(),
+            crypto.PADDING,
+            crypto.HASH_ALGORITHM,
+        )
+        assert verif is None  # verify() returns None iff the signature is correct
+        assert hivemind_access.expiration_time > datetime.datetime.utcnow()
+        assert hivemind_access.username == moonlanding_user_2.username
+
+        # Now the same user try to join a second time with the same public key
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
+        res = await client_wt_auth_user_2.put(
+            app.url_path_for(
+                "experiments:join-experiment-by-organization-and-model-name",
+            ),
+            json={"experiment_join_input": values},
+            params={
+                "organization_name": test_experiment_1_created_by_user_1.organization_name,
+                "model_name": test_experiment_1_created_by_user_1.model_name,
+            },
+        )
+        assert res.status_code == status.HTTP_200_OK, res.content
+
+        exp_pass = ExperimentJoinOutput(**res.json())
+        assert getattr(exp_pass, "coordinator_ip") == test_experiment_1_created_by_user_1.coordinator_ip
+        assert getattr(exp_pass, "coordinator_port") == test_experiment_1_created_by_user_1.coordinator_port
+
+        hivemind_access = getattr(exp_pass, "hivemind_access")
+        assert getattr(hivemind_access, "peer_public_key") == join_input_1.peer_public_key
+
+        signature = base64.b64decode(getattr(hivemind_access, "signature"))
+
+        auth_server_public_key = getattr(exp_pass, "auth_server_public_key")
+        auth_server_public_key = crypto.load_public_key(auth_server_public_key)
+
+        verif = auth_server_public_key.verify(
+            signature,
+            f"{hivemind_access.username} {hivemind_access.peer_public_key} {hivemind_access.expiration_time}".encode(),
+            crypto.PADDING,
+            crypto.HASH_ALGORITHM,
+        )
+        assert verif is None  # verify() returns None iff the signature is correct
+        assert hivemind_access.expiration_time > datetime.datetime.utcnow()
+        assert hivemind_access.username == moonlanding_user_2.username
+
+    async def test_cant_join_experiment_successfully_user_not_allowlisted(
+        self,
+        moonlanding_user_1,
+        app: FastAPI,
+        client_wt_auth_user_1: AsyncClient,
+        test_experiment_1_created_by_user_2: ExperimentPublic,
+        test_experiment_join_input_1_by_user_2: ExperimentJoinInput,
+    ):
+        join_input_1, private_key_input_1 = test_experiment_join_input_1_by_user_2
+        values = join_input_1.dict()
+        # Make the values JSON serializable
+        values["peer_public_key"] = values["peer_public_key"].decode("utf-8")
+
+        res = await client_wt_auth_user_1.put(
+            app.url_path_for(
+                "experiments:join-experiment-by-organization-and-model-name",
+            ),
+            json={"experiment_join_input": values},
+            params={
+                "organization_name": test_experiment_1_created_by_user_2.organization_name,
+                "model_name": test_experiment_1_created_by_user_2.model_name,
+            },
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED, res.content

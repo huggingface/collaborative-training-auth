@@ -271,36 +271,8 @@ async def delete_experiment(
     return deleted_exp
 
 
-@router.put("/join/{id}/", response_model=ExperimentJoinOutput, name="experiments:join-experiment-by-id")
-async def join_experiment_by_id(
-    id: int = Path(..., ge=1, title="The ID of the experiment the user wants to join."),
-    experiment_join_input: ExperimentJoinInput = Body(..., embed=True),
-    experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
-    # whitelist_repo: WhitelistRepository = Depends(get_repository(WhitelistRepository)),
-    # collaborators_repo: CollaboratorsRepository = Depends(get_repository(CollaboratorsRepository)),
-    # users_repo: UsersRepository = Depends(get_repository(UsersRepository)),
-    user: MoonlandingUser = Depends(authenticate),
-) -> ExperimentJoinOutput:
-    experiment = await experiments_repo.get_experiment_by_id(id=id)
-
-    if not experiment:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="You need to be at least a reader of the organization to join the collaborative experiment for the model",
-        )
-
-    if experiment.organization_name not in [org.name for org in user.orgs]:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Access to the experiment denied.",
-        )
-
-    exp_pass = await join_experiment(experiment, user, experiment_join_input)
-    return exp_pass
-
-
 @router.put(
-    "/join/",
+    "/join",
     response_model=ExperimentJoinOutput,
     name="experiments:join-experiment-by-organization-and-model-name",
 )
@@ -328,6 +300,34 @@ async def join_experiment_by_organization_and_model_name(
 
     exp_pass = await join_experiment(experiment, user, experiment_join_input)
     return exp_pass
+
+
+# @router.put("/join/{id}/", response_model=ExperimentJoinOutput, name="experiments:join-experiment-by-id")
+# async def join_experiment_by_id(
+#     id: int = Path(..., ge=1, title="The ID of the experiment the user wants to join."),
+#     experiment_join_input: ExperimentJoinInput = Body(..., embed=True),
+#     experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
+#     # whitelist_repo: WhitelistRepository = Depends(get_repository(WhitelistRepository)),
+#     # collaborators_repo: CollaboratorsRepository = Depends(get_repository(CollaboratorsRepository)),
+#     # users_repo: UsersRepository = Depends(get_repository(UsersRepository)),
+#     user: MoonlandingUser = Depends(authenticate),
+# ) -> ExperimentJoinOutput:
+#     experiment = await experiments_repo.get_experiment_by_id(id=id)
+
+#     if not experiment:
+#         raise HTTPException(
+#             status_code=HTTP_401_UNAUTHORIZED,
+#             detail="You need to be at least a reader of the organization to join the collaborative experiment for the model",
+#         )
+
+#     if experiment.organization_name not in [org.name for org in user.orgs]:
+#         raise HTTPException(
+#             status_code=HTTP_401_UNAUTHORIZED,
+#             detail="Access to the experiment denied.",
+#         )
+
+#     exp_pass = await join_experiment(experiment, user, experiment_join_input)
+#     return exp_pass
 
 
 async def join_experiment(
