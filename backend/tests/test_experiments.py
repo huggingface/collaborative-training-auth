@@ -255,7 +255,7 @@ class TestUpdateExperiment:
                     "coordinator_port",
                 ],
                 [
-                    "00.00.00.00",
+                    "0.0.0.0",
                     80,
                 ],
             ),
@@ -267,7 +267,7 @@ class TestUpdateExperiment:
                 ],
                 [
                     "model_4",
-                    "01.00.00.00",
+                    "1.0.0.0",
                     890,
                 ],
             ),
@@ -281,7 +281,7 @@ class TestUpdateExperiment:
                 [
                     "Organization_a",
                     "model_4",
-                    "02.00.00.00",
+                    "2.0.0.0",
                     880,
                 ],
             ),
