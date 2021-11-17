@@ -18,10 +18,7 @@ from starlette.status import HTTP_201_CREATED, HTTP_401_UNAUTHORIZED, HTTP_404_N
 
 from app.api.dependencies import crypto
 from app.api.dependencies.database import get_repository
-from app.db.repositories.collaborators import CollaboratorsRepository
 from app.db.repositories.experiments import ExperimentsRepository
-from app.db.repositories.users import UsersRepository
-from app.db.repositories.whitelist import WhitelistRepository
 from app.models.experiment import (
     ExperimentCreate,
     ExperimentCreatePublic,
@@ -34,31 +31,6 @@ from app.services.authentication import MoonlandingUser, RepoRole, authenticate
 
 
 router = APIRouter()
-
-# Todo Delete
-# @router.get("/", response_model=List[ExperimentFullPublic], name="experiments:list-all-user-experiments")
-# async def list_all_user_experiments(
-#     experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
-#     users_repo: UsersRepository = Depends(get_repository(UsersRepository)),
-#     whitelist_repo: WhitelistRepository = Depends(get_repository(WhitelistRepository)),
-#     collaborators_repo: CollaboratorsRepository = Depends(get_repository(CollaboratorsRepository)),
-#     user: MoonlandingUser = Depends(authenticate),
-# ) -> List[ExperimentFullPublic]:
-#     all_user_experiments = await experiments_repo.list_all_user_experiments(requesting_user=user)
-
-#     list_exp = []
-#     for exp in all_user_experiments:
-#         list_exp.append(
-#             await retrieve_full_experiment(
-#                 experiment_id=exp.id,
-#                 whitelist_repo=whitelist_repo,
-#                 users_repo=users_repo,
-#                 collaborators_repo=collaborators_repo,
-#                 experiment=exp,
-#             )
-#         )
-
-#     return list_exp
 
 
 @router.post("/", response_model=ExperimentPublic, name="experiments:create-experiment", status_code=HTTP_201_CREATED)
@@ -187,22 +159,6 @@ async def update_experiment_by_id(
     return updated_public_experiment
 
 
-# @router.put(
-#     "/"{id}, response_model=ExperimentPublic, name="experiments:update-experiment-by-organization-and-model-name"
-# )
-# async def update_experiment_by_organization_and_model_name(
-#     id: int = Path(..., ge=1, title="The ID of the experiment to update."),
-#     experiment_update: ExperimentUpdate = Body(..., embed=True),
-#     experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
-#     users_repo: UsersRepository = Depends(get_repository(UsersRepository)),
-#     whitelist_repo: WhitelistRepository = Depends(get_repository(WhitelistRepository)),
-#     collaborators_repo: CollaboratorsRepository = Depends(get_repository(CollaboratorsRepository)),
-#     user: MoonlandingUser = Depends(authenticate),
-# ) -> ExperimentPublic:
-#     # TODO
-#     pass
-
-
 async def update_experiment(
     experiment: ExperimentInDB,
     experiment_update: ExperimentUpdate,
@@ -246,35 +202,6 @@ async def delete_experiment_by_id(
     return deleted_public_experiment
 
 
-# @router.delete(
-#     "/", response_model=ExperimentPublic, name="experiments:delete-experiment-by-organization-and-model-name"
-# )
-# async def delete_experiment_by_organization_and_model_name(
-#     organization_name: str,
-#     model_name: str,
-#     experiments_repo: ExperimentsRepository = Depends(get_repository(ExperimentsRepository)),
-#     user: MoonlandingUser = Depends(authenticate),
-# ) -> ExperimentPublic:
-#     experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
-#         organization_name=organization_name, model_name=model_name
-#     )
-
-#     if not experiment:
-#         raise HTTPException(
-#             status_code=HTTP_401_UNAUTHORIZED,
-#             detail="Access to the experiment denied.",
-#         )
-
-#     if experiment.organization_name not in [org.name for org in user.orgs if org.role_in_org == RepoRole.admin]:
-#         raise HTTPException(
-#             status_code=HTTP_401_UNAUTHORIZED,
-#             detail=f"You need to be an admin of the organization {experiment.organization_name} to delete the collaborative experiment for the model {experiment.model_name}",
-#         )
-
-#     deleted_public_experiment = await delete_experiment(experiment, user, experiments_repo)
-#     return deleted_public_experiment
-
-
 async def delete_experiment(
     experiment: ExperimentInDB, user: MoonlandingUser, experiments_repo: ExperimentsRepository
 ):
@@ -304,7 +231,6 @@ async def join_experiment_by_organization_and_model_name(
     experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
         organization_name=organization_name, model_name=model_name
     )
-    print("*** expr *** ", experiment)
 
     if not experiment:
         raise HTTPException(
@@ -360,74 +286,3 @@ async def join_experiment(
     )
     exp_pass = ExperimentJoinOutput(**experiment.dict(), hivemind_access=hivemind_access)
     return exp_pass
-
-
-# TODO delete
-# async def retrieve_full_experiment(
-#     experiment_id: int,
-#     # whitelist_repo: WhitelistRepository,
-#     # collaborators_repo: CollaboratorsRepository,
-#     # users_repo: UsersRepository,
-#     experiment: ExperimentBase,
-# ) -> ExperimentFullPublic:
-#     all_experiment_id_items = await whitelist_repo.list_all_experiment_id_items(experiment_id=experiment_id)
-
-#     collaborators = []
-#     for whitelist_item in all_experiment_id_items:
-#         user = await users_repo.get_user_by_id(id=whitelist_item.user_id)
-#         collaborator_list = await collaborators_repo.list_all_collaborator_by_whitelist_item_id(
-#             whitelist_item_id=whitelist_item.id
-#         )
-#         for collaborator in collaborator_list:
-#             collaborators.append(
-#                 CollaboratorPublic(
-#                     username=user.username,
-#                     peer_public_key=collaborator.peer_public_key,
-#                     user_created_at=user.created_at,
-#                     user_updated_at=user.updated_at,
-#                     public_key_created_at=collaborator.created_at,
-#                     public_key_updated_at=collaborator.updated_at,
-#                 )
-#             )
-#         if collaborator_list == []:
-#             collaborators.append(
-#                 CollaboratorPublic(
-#                     username=user.username,
-#                     user_created_at=user.created_at,
-#                     user_updated_at=user.updated_at,
-#                 )
-#             )
-
-#     if collaborators != []:
-#         experiment_full = ExperimentFullPublic(**experiment.dict(), collaborators=collaborators)
-#     else:
-#         experiment_full = ExperimentFullPublic(**experiment.dict())
-#     return experiment_full
-
-
-# async def remove_whitelist_item(
-#     whitelist_item_id: int,
-#     whitelist_repo: WhitelistRepository,
-#     collaborators_repo: CollaboratorsRepository,
-#     users_repo: UsersRepository,
-# ):
-#     user_ids = []
-#     collaborators_ids = []
-
-#     to_remove_item = await whitelist_repo.get_item_by_id(id=whitelist_item_id)
-
-#     all_user_occurences_in_whitelist = await whitelist_repo.list_all_user_id_items(user_id=to_remove_item.user_id)
-
-#     if len(all_user_occurences_in_whitelist) == 1:
-#         user_ids.append(await users_repo.delete_user_by_id(id=to_remove_item.user_id))
-
-#     collaborators_list = await collaborators_repo.list_all_collaborator_by_whitelist_item_id(
-#         whitelist_item_id=whitelist_item_id
-#     )
-#     for collaborator in collaborators_list:
-#         # raise ValueError(collaborator.id)
-#         collaborators_ids.append(await collaborators_repo.delete_collaborator_by_id(id=collaborator.id))
-
-#     whitelist_id = await whitelist_repo.delete_item_by_id(id=whitelist_item_id)
-
-#     return (whitelist_id, user_ids, collaborators_ids)

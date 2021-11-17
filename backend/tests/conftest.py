@@ -245,36 +245,3 @@ async def test_experiment_1_created_by_user_2(db: Database, moonlanding_user_2: 
         user=moonlanding_user_2,
     )
     return exp
-
-
-# @pytest.fixture
-# async def test_experiment_2_created_by_user_2(
-#     db: Database, moonlanding_user_2: MoonlandingUser
-# ) -> ExperimentFullPublic:
-#     experiments_repo = ExperimentsRepository(db)
-#     users_repo = UsersRepository(db)
-#     whitelist_repo = WhitelistRepository(db)
-#     collaborators_repo = CollaboratorsRepository(db)
-
-#     new_experiment = ExperimentFullCreatePublic(
-#         name="fake experiment 1 created by User2 name",
-#         collaborators=[UserCreate(username="user1"), UserCreate(username="User4"), UserCreate(username="User6")],
-#     )
-#     experiment = await create_new_experiment(
-#         new_experiment=new_experiment,
-#         experiments_repo=experiments_repo,
-#         users_repo=users_repo,
-#         whitelist_repo=whitelist_repo,
-#         collaborators_repo=collaborators_repo,
-#         user=moonlanding_user_2,
-#     )
-#     exp = await update_experiment_by_id(
-#         id=experiment.id,
-#         experiment_full_update=ExperimentFullUpdate(coordinator_ip="192.0.2.0", coordinator_port=80),
-#         experiments_repo=experiments_repo,
-#         users_repo=users_repo,
-#         whitelist_repo=whitelist_repo,
-#         collaborators_repo=collaborators_repo,
-#         user=moonlanding_user_2,
-#     )
-#     return exp

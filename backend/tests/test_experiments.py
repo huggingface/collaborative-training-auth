@@ -15,7 +15,7 @@
 import base64
 import datetime
 from ipaddress import IPv4Address, IPv6Address
-from typing import List, Union
+from typing import List
 
 import pytest
 from cryptography.hazmat.primitives import hashes
