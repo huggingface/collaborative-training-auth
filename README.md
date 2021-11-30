@@ -39,3 +39,5 @@ Run tests
 docker-compose up -d --build
 docker exec collaborative-training-auth_server_1 pytest -v
 ```
+
+

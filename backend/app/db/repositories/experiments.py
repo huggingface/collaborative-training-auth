@@ -23,30 +23,37 @@ from app.models.experiment import ExperimentCreate, ExperimentInDB, ExperimentUp
 from app.services.authentication import MoonlandingUser
 
 
-COLUMNS = "id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at"
+COLUMNS = "id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at"
 CREATE_EXPERIMENT_QUERY = """
-    INSERT INTO experiments (name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key)
-    VALUES (:name, :owner, :coordinator_ip, :coordinator_port, :auth_server_public_key, :auth_server_private_key)
-    RETURNING id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at;
+    INSERT INTO experiments (organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key)
+    VALUES (:organization_name, :model_name, :creator, :coordinator_ip, :coordinator_port, :auth_server_public_key, :auth_server_private_key)
+    RETURNING id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at;
 """
 GET_EXPERIMENT_BY_ID_QUERY = """
-    SELECT id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
+    SELECT id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
     FROM experiments
     WHERE id = :id;
 """
-LIST_ALL_USER_EXPERIMENTS_QUERY = """
-    SELECT id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
+GET_EXPERIMENT_BY_ORGANIZATON_AND_MODEL_NAME_QUERY = """
+    SELECT id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
     FROM experiments
-    WHERE owner = :owner;
+    WHERE model_name = :model_name
+    AND organization_name = :organization_name;
+"""
+LIST_ALL_USER_EXPERIMENTS_QUERY = """
+    SELECT id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at
+    FROM experiments
+    WHERE creator = :creator;
 """
 UPDATE_EXPERIMENT_BY_ID_QUERY = """
     UPDATE experiments
-    SET name             = :name,
-        coordinator_ip   = :coordinator_ip,
-        coordinator_port = :coordinator_port,
-        owner            = :owner
+    SET organization_name = :organization_name,
+        model_name        = :model_name,
+        coordinator_ip    = :coordinator_ip,
+        coordinator_port  = :coordinator_port,
+        creator           = :creator
     WHERE id = :id
-    RETURNING id, name, owner, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at;
+    RETURNING id, organization_name, model_name, creator, coordinator_ip, coordinator_port, auth_server_public_key, auth_server_private_key, created_at, updated_at;
 """
 DELETE_EXPERIMENT_BY_ID_QUERY = """
     DELETE FROM experiments
@@ -63,7 +70,7 @@ class ExperimentsRepository(BaseRepository):
     async def create_experiment(
         self, *, new_experiment: ExperimentCreate, requesting_user: MoonlandingUser
     ) -> ExperimentInDB:
-        new_experiment_table = {**new_experiment.dict(), "owner": requesting_user.username}
+        new_experiment_table = {**new_experiment.dict(), "creator": requesting_user.username}
         if "coordinator_ip" in new_experiment_table.keys() and (
             isinstance(new_experiment_table["coordinator_ip"], IPv4Address)
             or isinstance(new_experiment_table["coordinator_ip"], IPv6Address)
@@ -71,6 +78,18 @@ class ExperimentsRepository(BaseRepository):
             new_experiment_table["coordinator_ip"] = str(new_experiment_table["coordinator_ip"])
 
         experiment = await self.db.fetch_one(query=CREATE_EXPERIMENT_QUERY, values=new_experiment_table)
+        return ExperimentInDB(**experiment)
+
+    async def get_experiment_by_organization_and_model_name(
+        self, *, organization_name: str, model_name: str
+    ) -> ExperimentInDB:
+        experiment = await self.db.fetch_one(
+            query=GET_EXPERIMENT_BY_ORGANIZATON_AND_MODEL_NAME_QUERY,
+            values={"organization_name": organization_name, "model_name": model_name},
+        )
+        if not experiment:
+            return None
+
         return ExperimentInDB(**experiment)
 
     async def get_experiment_by_id(self, *, id: int) -> ExperimentInDB:
@@ -82,7 +101,7 @@ class ExperimentsRepository(BaseRepository):
 
     async def list_all_user_experiments(self, requesting_user: MoonlandingUser) -> List[ExperimentInDB]:
         experiment_records = await self.db.fetch_all(
-            query=LIST_ALL_USER_EXPERIMENTS_QUERY, values={"owner": requesting_user.username}
+            query=LIST_ALL_USER_EXPERIMENTS_QUERY, values={"creator": requesting_user.username}
         )
         return [ExperimentInDB(**exp) for exp in experiment_records]
 
@@ -94,7 +113,6 @@ class ExperimentsRepository(BaseRepository):
         values = {
             **experiment_update_params.dict(
                 exclude={
-                    "collaborators",
                     "auth_server_public_key",
                     "auth_server_private_key",
                     "created_at",

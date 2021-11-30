@@ -14,6 +14,7 @@
 # limitations under the License.#
 import os
 import warnings
+from typing import Tuple
 
 import alembic
 import pytest
@@ -26,14 +27,10 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 
 from app.api.routes.experiments import create_new_experiment, update_experiment_by_id
-from app.db.repositories.collaborators import CollaboratorsRepository
 from app.db.repositories.experiments import ExperimentsRepository
-from app.db.repositories.users import UsersRepository
-from app.db.repositories.whitelist import WhitelistRepository
-from app.models.experiment_full import ExperimentFullCreatePublic, ExperimentFullPublic, ExperimentFullUpdate
+from app.models.experiment import ExperimentCreatePublic, ExperimentPublic, ExperimentUpdate
 from app.models.experiment_join import ExperimentJoinInput
-from app.models.user import UserCreate
-from app.services.authentication import MoonlandingUser
+from app.services.authentication import MoonlandingUser, Organization, RepoRole
 
 
 # Apply migrations at beginning and end of testing session
@@ -75,10 +72,47 @@ async def client(app: FastAPI) -> AsyncClient:
 
 # Fixtures for authenticated User1
 
+# Create an organization
+@pytest.fixture
+def organization_1_admin():
+    return Organization(name="org_1", role_in_org=RepoRole.admin)
+
+
+@pytest.fixture
+def organization_3_admin():
+    return Organization(name="org_3", role_in_org=RepoRole.admin)
+
+
+@pytest.fixture
+def organization_a_admin():
+    return Organization(name="organization_a", role_in_org=RepoRole.admin)
+
+
+@pytest.fixture
+def Organization_a_admin():
+    return Organization(name="Organization_a", role_in_org=RepoRole.admin)
+
+
+@pytest.fixture
+def organization_1_read():
+    return Organization(name="org_1", role_in_org=RepoRole.read)
+
+
+@pytest.fixture
+def organization_2_read():
+    return Organization(name="org_2", role_in_org=RepoRole.read)
+
+
 # Create a user for testing
 @pytest.fixture
-def moonlanding_user_1() -> MoonlandingUser:
-    moonlanding_user_1 = MoonlandingUser(username="User1", email="user1@test.co")
+def moonlanding_user_1(
+    organization_1_admin, Organization_a_admin, organization_a_admin, organization_2_read
+) -> MoonlandingUser:
+    moonlanding_user_1 = MoonlandingUser(
+        username="User1",
+        email="user1@test.co",
+        orgs=[organization_1_admin, Organization_a_admin, organization_a_admin, organization_2_read],
+    )
     return moonlanding_user_1
 
 
@@ -96,82 +130,79 @@ async def client_wt_auth_user_1(app: FastAPI, moonlanding_user_1: MoonlandingUse
 
 
 @pytest.fixture
-async def test_experiment_1_created_by_user_1(
-    db: Database, moonlanding_user_1: MoonlandingUser
-) -> ExperimentFullPublic:
+async def test_experiment_1_created_by_user_1(db: Database, moonlanding_user_1: MoonlandingUser) -> ExperimentPublic:
     experiments_repo = ExperimentsRepository(db)
-    users_repo = UsersRepository(db)
-    whitelist_repo = WhitelistRepository(db)
-    collaborators_repo = CollaboratorsRepository(db)
 
-    new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 1 created by User1 name",
-        collaborators=[
-            UserCreate(username="User1"),
-            UserCreate(username="User2"),
-            UserCreate(username="User3"),
-            UserCreate(username="User10"),
-            UserCreate(username="User11"),
-        ],
+    organization_name = "org_1"
+    model_name = "model_1"
+
+    experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
+        organization_name=organization_name, model_name=model_name
     )
+
+    if experiment:
+        return experiment
+
+    new_experiment = ExperimentCreatePublic(organization_name=organization_name, model_name=model_name)
     new_exp = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
-        users_repo=users_repo,
-        whitelist_repo=whitelist_repo,
-        collaborators_repo=collaborators_repo,
         user=moonlanding_user_1,
     )
     return new_exp
 
 
 @pytest.fixture
-async def test_experiment_2_created_by_user_1(
+async def test_experiment_2_created_by_user_1_for_updates_tests(
     db: Database, moonlanding_user_1: MoonlandingUser
-) -> ExperimentFullPublic:
+) -> ExperimentPublic:
     experiments_repo = ExperimentsRepository(db)
-    users_repo = UsersRepository(db)
-    whitelist_repo = WhitelistRepository(db)
-    collaborators_repo = CollaboratorsRepository(db)
 
-    new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 2 created by User1 name",
-        collaborators=[UserCreate(username="User1"), UserCreate(username="User4"), UserCreate(username="User5")],
+    organization_name = "organization_a"
+    model_name = "model_1"
+
+    experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
+        organization_name=organization_name, model_name=model_name
     )
-    return await create_new_experiment(
+
+    if experiment:
+        return experiment
+
+    new_experiment = ExperimentCreatePublic(organization_name=organization_name, model_name=model_name)
+    new_exp = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
-        users_repo=users_repo,
-        whitelist_repo=whitelist_repo,
-        collaborators_repo=collaborators_repo,
         user=moonlanding_user_1,
     )
+    return new_exp
 
 
 @pytest.fixture
-async def test_experiment_join_input_1_by_user_1() -> ExperimentJoinInput:
+async def test_experiment_join_input_1_by_user_2() -> Tuple[ExperimentJoinInput, rsa.RSAPrivateKey]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     serialized_public_key = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
     )
-    return ExperimentJoinInput(peer_public_key=serialized_public_key)
+    return ExperimentJoinInput(peer_public_key=serialized_public_key), private_key
 
 
 @pytest.fixture
-async def test_experiment_join_input_2_by_user_1() -> ExperimentJoinInput:
+async def test_experiment_join_input_2_by_user_2() -> Tuple[ExperimentJoinInput, rsa.RSAPrivateKey]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     serialized_public_key = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
     )
-    return ExperimentJoinInput(peer_public_key=serialized_public_key)
+    return ExperimentJoinInput(peer_public_key=serialized_public_key), private_key
 
 
 # Fixtures for authenticated User2
 
 # Create a user for testing
 @pytest.fixture
-def moonlanding_user_2() -> MoonlandingUser:
-    moonlanding_user_2 = MoonlandingUser(username="User2", email="user2@test.co")
+def moonlanding_user_2(organization_3_admin, organization_1_read) -> MoonlandingUser:
+    moonlanding_user_2 = MoonlandingUser(
+        username="User2", email="user2@test.co", orgs=[organization_1_read, organization_3_admin]
+    )
     return moonlanding_user_2
 
 
@@ -188,66 +219,29 @@ async def client_wt_auth_user_2(app: FastAPI, moonlanding_user_2: MoonlandingUse
 
 
 @pytest.fixture
-async def test_experiment_1_created_by_user_2(
-    db: Database, moonlanding_user_2: MoonlandingUser
-) -> ExperimentFullPublic:
+async def test_experiment_1_created_by_user_2(db: Database, moonlanding_user_2: MoonlandingUser) -> ExperimentPublic:
     experiments_repo = ExperimentsRepository(db)
-    users_repo = UsersRepository(db)
-    whitelist_repo = WhitelistRepository(db)
-    collaborators_repo = CollaboratorsRepository(db)
+    organization_name = "org_3"
+    model_name = "model_1"
 
-    new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 1 created by User2 name",
-        collaborators=[UserCreate(username="User1"), UserCreate(username="User4"), UserCreate(username="User6")],
+    experiment = await experiments_repo.get_experiment_by_organization_and_model_name(
+        organization_name=organization_name, model_name=model_name
     )
+
+    if experiment:
+        return experiment
+
+    new_experiment = ExperimentCreatePublic(organization_name=organization_name, model_name=model_name)
+
     experiment = await create_new_experiment(
         new_experiment=new_experiment,
         experiments_repo=experiments_repo,
-        users_repo=users_repo,
-        whitelist_repo=whitelist_repo,
-        collaborators_repo=collaborators_repo,
         user=moonlanding_user_2,
     )
     exp = await update_experiment_by_id(
         id=experiment.id,
-        experiment_full_update=ExperimentFullUpdate(coordinator_ip="192.0.2.0", coordinator_port=80),
+        experiment_update=ExperimentUpdate(coordinator_ip="192.0.2.0", coordinator_port=80),
         experiments_repo=experiments_repo,
-        users_repo=users_repo,
-        whitelist_repo=whitelist_repo,
-        collaborators_repo=collaborators_repo,
-        user=moonlanding_user_2,
-    )
-    return exp
-
-
-@pytest.fixture
-async def test_experiment_2_created_by_user_2(
-    db: Database, moonlanding_user_2: MoonlandingUser
-) -> ExperimentFullPublic:
-    experiments_repo = ExperimentsRepository(db)
-    users_repo = UsersRepository(db)
-    whitelist_repo = WhitelistRepository(db)
-    collaborators_repo = CollaboratorsRepository(db)
-
-    new_experiment = ExperimentFullCreatePublic(
-        name="fake experiment 1 created by User2 name",
-        collaborators=[UserCreate(username="user1"), UserCreate(username="User4"), UserCreate(username="User6")],
-    )
-    experiment = await create_new_experiment(
-        new_experiment=new_experiment,
-        experiments_repo=experiments_repo,
-        users_repo=users_repo,
-        whitelist_repo=whitelist_repo,
-        collaborators_repo=collaborators_repo,
-        user=moonlanding_user_2,
-    )
-    exp = await update_experiment_by_id(
-        id=experiment.id,
-        experiment_full_update=ExperimentFullUpdate(coordinator_ip="192.0.2.0", coordinator_port=80),
-        experiments_repo=experiments_repo,
-        users_repo=users_repo,
-        whitelist_repo=whitelist_repo,
-        collaborators_repo=collaborators_repo,
         user=moonlanding_user_2,
     )
     return exp
