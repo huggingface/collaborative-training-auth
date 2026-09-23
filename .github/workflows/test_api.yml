@@ -10,8 +10,12 @@ on:
     release:
         types:
             - created
+permissions: {}
+
 jobs:
     App:
+        permissions:
+          contents: read
         name: Test api
         runs-on: ubuntu-latest
         steps:
